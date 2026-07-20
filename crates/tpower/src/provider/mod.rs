@@ -157,9 +157,7 @@ impl From<&IORegistry> for NormalizedResource {
                 brightness_power: 0.,
                 heatpipe_power: 0.,
                 battery_level: io.current_capacity,
-                absolute_battery_level: io.apple_raw_current_capacity as f32
-                    / io.apple_raw_max_capacity as f32
-                    * 100.,
+                absolute_battery_level: absolute_battery_level(io),
                 temperature: io.temperature as f32 / 100.,
 
                 adapter_watts: io.adapter_details.watts.unwrap_or_default() as f32,
@@ -203,9 +201,7 @@ impl From<(&IORegistry, &SMCPowerData)> for NormalizedResource {
                 brightness_power: smc.brightness,
                 heatpipe_power: smc.heatpipe,
                 battery_level: io.current_capacity,
-                absolute_battery_level: io.apple_raw_current_capacity as f32
-                    / io.apple_raw_max_capacity as f32
-                    * 100.,
+                absolute_battery_level: absolute_battery_level(io),
                 temperature: smc.temperature,
                 adapter_power: smc.delivery_rate
                     + io.ptd()
@@ -243,6 +239,22 @@ pub fn get_mac_ioreg_dict() -> anyhow::Result<CFDictionary> {
 pub fn get_mac_ioreg() -> anyhow::Result<IORegistry> {
     let dic = get_mac_ioreg_dict()?;
     unsafe { mem::transmute(dict_into::<repr::IORegistry>(dic)) }
+}
+
+/// Compute the absolute battery level as a percentage (0-100).
+///
+/// On macOS 27+ `AppleRawCurrentCapacity` / `AppleRawMaxCapacity` are no
+/// longer exposed by `AppleSmartBattery`, so the raw-capacity ratio is
+/// unavailable. Fall back to the `CurrentCapacity` / `MaxCapacity` pair
+/// (already a 0-100 percentage) and finally to 0.0 if neither is usable.
+fn absolute_battery_level(io: &IORegistry) -> f32 {
+    if io.apple_raw_max_capacity > 0 {
+        io.apple_raw_current_capacity as f32 / io.apple_raw_max_capacity as f32 * 100.
+    } else if io.max_capacity > 0 {
+        io.current_capacity as f32 / io.max_capacity as f32 * 100.
+    } else {
+        io.current_capacity as f32
+    }
 }
 
 #[derive(Debug)]

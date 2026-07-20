@@ -84,9 +84,16 @@ pub fn start_sender<R: Runtime>(
                     PowerUpdatedEvent::new_with(&smc, &status_bar_item, show_charging)
                         .emit(&app)
                         .unwrap();
-                    PowerTickEvent {
-                        data: (&get_mac_ioreg().unwrap(), &smc).into(),
-                    }.emit(&app).unwrap();
+                    match get_mac_ioreg() {
+                        Ok(ioreg) => {
+                            PowerTickEvent {
+                                data: (&ioreg, &smc).into(),
+                            }.emit(&app).unwrap();
+                        }
+                        Err(err) => {
+                            log::error!("Failed to get IORegistry: {err}");
+                        }
+                    }
                 }
                 Some(msg) = rx.recv() => match msg {
                     SenderMessage::ImmediateSend => {
@@ -94,9 +101,16 @@ pub fn start_sender<R: Runtime>(
                         PowerUpdatedEvent::new_with(&smc, &status_bar_item, show_charging)
                             .emit(&app)
                             .unwrap();
-                        PowerTickEvent {
-                            data:  (&get_mac_ioreg().unwrap(), &smc).into()
-                        }.emit(&app).unwrap();
+                        match get_mac_ioreg() {
+                            Ok(ioreg) => {
+                                PowerTickEvent {
+                                    data: (&ioreg, &smc).into()
+                                }.emit(&app).unwrap();
+                            }
+                            Err(err) => {
+                                log::error!("Failed to get IORegistry: {err}");
+                            }
+                        }
                     },
                     SenderMessage::ChangeInterval(interval) => {
                         timer = time::interval(if interval < Duration::from_millis(500) {
