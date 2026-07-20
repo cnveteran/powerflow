@@ -74,19 +74,32 @@ with_repr! {
     pub struct IORegistry {
         pub adapter_details: AdapterDetails,
         pub power_telemetry_data: Option<PowerTelemetryData>,
+        // macOS 27+ no longer exposes AbsoluteCapacity at the top level of
+        // AppleSmartBattery (it moved into the nested BatteryData dict).
+        #[serde(default)]
         pub absolute_capacity: i32,
         pub amperage: i32,
         pub voltage: i32,
         pub apple_raw_battery_voltage: Option<i32>,
+        // macOS 27+ no longer exposes AppleRawCurrentCapacity /
+        // AppleRawMaxCapacity via AppleSmartBattery. Default to 0 and let
+        // callers fall back to CurrentCapacity / MaxCapacity (percent 0-100).
+        #[serde(default)]
         pub apple_raw_current_capacity: i32,
+        #[serde(default)]
         pub apple_raw_max_capacity: i32,
         pub current_capacity: i32,
         pub cycle_count: i32,
+        // macOS 27+ moved DesignCapacity into the nested BatteryData dict,
+        // so the top-level key is often missing.
+        #[serde(default)]
         pub design_capacity: i32,
         pub fully_charged: bool,
         pub instant_amperage: i32,
         pub is_charging: bool,
         pub max_capacity: i32,
+        // Temperature is not always present (e.g. macOS 27 beta).
+        #[serde(default)]
         pub temperature: i32,
         pub time_remaining: i32,
         // TODO: check
