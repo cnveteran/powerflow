@@ -220,28 +220,39 @@ impl From<(&IORegistry, &SMCPowerData)> for NormalizedResource {
 /// refreshes it every few seconds; SMC's `B0TE`/`B0TF` are firmware-level
 /// and can stay pinned for many minutes on Apple Silicon. We therefore
 /// prefer the IOKit value and only fall back to SMC when IOKit reports an
-/// invalid sentinel (`-1` or an unreasonable magnitude).
+/// invalid sentinel (`-1`, `65535`, or an unreasonable magnitude).
+///
+/// NOTE: we intentionally do NOT use `smc.is_charging()` to pick between
+/// `time_to_empty` and `time_to_full`. On macOS 27 the SMC `CHCC` key can
+/// report charging=true while the battery is actually discharging
+/// (amperage < 0), which would cause us to pick the wrong sentinel and
+/// display "1000+ hours to full". Instead we try both SMC values and
+/// keep whichever is plausible.
 fn time_remain_from(io: &IORegistry, smc: &SMCPowerData) -> Duration {
     const IOKIT_UNKNOWN: i32 = -1;
-    const IOKIT_MAX_PLAUSIBLE_MIN: i32 = 24 * 60;
+    const IOKIT_SENTINEL: i32 = 65535;
+    const MAX_PLAUSIBLE_MIN: i32 = 24 * 60;
 
     let iokit_min = io.time_remaining;
-    if iokit_min != IOKIT_UNKNOWN && (1..=IOKIT_MAX_PLAUSIBLE_MIN).contains(&iokit_min) {
+    if iokit_min != IOKIT_UNKNOWN
+        && iokit_min != IOKIT_SENTINEL
+        && (1..=MAX_PLAUSIBLE_MIN).contains(&iokit_min)
+    {
         return Duration::from_secs((iokit_min as u64) * 60);
     }
 
-    let smc_min = if smc.is_charging() {
-        smc.time_to_full
-    } else {
-        smc.time_to_empty
-    };
-    // 65535 is the SMC sentinel for "not applicable" (e.g. B0TF while
-    // discharging). Treat anything implausibly large as unknown → 0.
-    if smc_min.is_finite() && smc_min >= 0.0 && smc_min < IOKIT_MAX_PLAUSIBLE_MIN as f32 {
-        Duration::from_secs_f32(60.0 * smc_min)
-    } else {
-        Duration::ZERO
+    // Try both SMC values; the one that's not a sentinel is the right one.
+    for smc_min in [smc.time_to_empty, smc.time_to_full] {
+        if smc_min.is_finite()
+            && smc_min > 0.0
+            && smc_min < MAX_PLAUSIBLE_MIN as f32
+            && (smc_min as i32) != IOKIT_SENTINEL
+        {
+            return Duration::from_secs_f32(60.0 * smc_min);
+        }
     }
+
+    Duration::ZERO
 }
 
 pub fn get_mac_ioreg_dict() -> anyhow::Result<CFDictionary> {
