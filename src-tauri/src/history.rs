@@ -17,6 +17,9 @@ use crate::{
     local::PowerTickEvent,
 };
 
+/// Cap overnight charges (~2s interval → ~2h of samples) to bound RAM / BLOB size.
+const MAX_STAGED_SAMPLES: usize = 3600;
+
 struct ChargingHistoryStage {
     data: NormalizedResource,
     raw: String,
@@ -62,9 +65,8 @@ fn summrize_history(
         DeviceType::Remote(ref udid) => app
             .state::<DeviceState>()
             .read()
-            .unwrap()
-            .get(udid)
-            .map(|d| d.0.clone()),
+            .ok()
+            .and_then(|s| s.get(udid).map(|d| d.0.clone())),
     }
     .unwrap_or_default();
 
@@ -73,7 +75,8 @@ fn summrize_history(
     let from_level = first.data.battery_level;
     let end_level = last.data.battery_level;
     let timestamp = first.data.last_update;
-    let duration = last.data.last_update - timestamp;
+    // Guard against clock skew / out-of-order samples.
+    let duration = (last.data.last_update - timestamp).max(0);
 
     let adapter_name = last
         .data
@@ -111,6 +114,24 @@ fn summrize_history(
     })
 }
 
+fn push_stage(staged: &mut Vec<ChargingHistoryStage>, data: NormalizedResource) {
+    if staged.len() >= MAX_STAGED_SAMPLES {
+        let drop_n = staged.len() / 4;
+        staged.drain(0..drop_n);
+        log::warn!(
+            "charging history staging buffer capped; dropped {drop_n} oldest samples"
+        );
+    }
+    let raw = match serde_json::to_string(&data) {
+        Ok(s) => s,
+        Err(err) => {
+            log::error!("Failed to serialize charging sample: {err}");
+            String::new()
+        }
+    };
+    staged.push(ChargingHistoryStage { raw, data });
+}
+
 fn spawn_history_recorder(
     app: AppHandle,
     mut rx: mpsc::Receiver<(DeviceType, NormalizedResource)>,
@@ -120,23 +141,47 @@ fn spawn_history_recorder(
         let mut staged: HashMap<DeviceType, Vec<ChargingHistoryStage>> = HashMap::new();
 
         while let Some((typ, data)) = rx.recv().await {
-            let full_charged = data.battery_level == 100;
-
+            let full_charged = data.battery_level >= 100;
             let staged = staged.entry(typ.clone()).or_default();
 
-            if staged
+            let was_charging = staged
                 .last()
-                .map(|last| last.data.is_charging && !data.is_charging)
-                .unwrap_or(false)
-                || (!staged.is_empty() && full_charged)
-            {
+                .map(|last| last.data.is_charging)
+                .unwrap_or(false);
+            let unplugged = was_charging && !data.is_charging;
+            let already_staging = !staged.is_empty();
+            // Do not open a new session that starts already full; do allow
+            // appending the 100% sample onto an in-progress charge.
+            let should_stage = data.is_charging
+                && (already_staging || !full_charged)
+                && staged
+                    .last()
+                    .map(|last| data.last_update != last.data.last_update)
+                    .unwrap_or(true);
+
+            // Stage while charging — including the 100% sample — before finalize.
+            if should_stage {
+                log::info!("staged: {:#?}", staged.len() + 1);
+                push_stage(staged, data);
+            }
+
+            let reached_full = full_charged
+                && !staged.is_empty()
+                && staged
+                    .last()
+                    .map(|s| s.data.battery_level >= 100)
+                    .unwrap_or(false);
+
+            if unplugged || reached_full {
                 let taked = mem::take(staged);
                 // filter out short history
                 if taked.len() <= 2 {
                     continue;
                 }
 
-                let history = summrize_history(app.app_handle(), taked, typ).unwrap();
+                let Some(history) = summrize_history(app.app_handle(), taked, typ) else {
+                    continue;
+                };
 
                 match save_charging_history(&db, &history).await {
                     Ok(res) => {
@@ -153,20 +198,6 @@ fn spawn_history_recorder(
 
                 HistoryRecordedEvent.emit(&app).unwrap_or_else(|err| {
                     log::error!("Failed to emit HistoryRecordedEvent: {:?}", err)
-                });
-            }
-
-            if staged
-                .last()
-                .map(|last| data.last_update != last.data.last_update)
-                .unwrap_or(true)
-                && data.is_charging
-                && !full_charged
-            {
-                log::info!("staged: {:#?}", staged.len());
-                staged.push(ChargingHistoryStage {
-                    raw: serde_json::to_string(&data).unwrap(),
-                    data,
                 });
             }
         }

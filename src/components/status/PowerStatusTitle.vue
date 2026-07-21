@@ -27,7 +27,7 @@ const buttonText = computed(() => {
       v-if="power.isRemote"
       class="mr-1 size-2 rounded-full"
       :class="{
-        'bg-blue-500 animate-pulse': !rawData.isLocal && !rawData.offline,
+        'bg-primary animate-pulse': !rawData.isLocal && !rawData.offline,
         'bg-neutral-500': !rawData.isLocal && rawData.offline,
       }"
     />
@@ -37,23 +37,23 @@ const buttonText = computed(() => {
   <div
     v-else-if="power.isCharging"
     class="rounded-md
-    bg-gradient-to-r from-blue-500 to-blue-600
+    bg-primary
     px-2 py-1 text-xs truncate font-mono"
   >
-    <span class="font-bold mr-1 text-background">{{ power.adapterWatts }}W</span>
-    <span class="text-[10px] text-background/80">({{ power.adapterVoltage }}V,{{
+    <span class="font-bold mr-1 text-primary-foreground">{{ power.adapterWatts }}W</span>
+    <span class="text-[10px] text-primary-foreground/80">({{ power.adapterVoltage }}V,{{
       power.adapterAmperage }}A)</span>
   </div>
   <div
     v-else
-    class="rounded-md dark:bg-blue-600 bg-blue-600 px-2 py-1 text-xs truncate font-mono w-20 text-background flex items-center justify-center
-            cursor-pointer hover:bg-blue-600 transition-colors
+    class="rounded-md bg-primary px-2 py-1 text-xs truncate font-mono w-20 text-primary-foreground flex items-center justify-center
+            cursor-pointer hover:bg-primary/90 transition-colors
             "
     @click.stop="showRemainDuration = !showRemainDuration"
   >
     <span class="font-bold mr-1">{{ buttonText }}</span>
     <ArrowUpDown
-      class="size-3 text-background/80 transition-transform duration-300"
+      class="size-3 text-primary-foreground/80 transition-transform duration-300"
       :class="{ 'rotate-180': showRemainDuration }"
     />
   </div>

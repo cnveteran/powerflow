@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     ffi::c_void,
-    mem::{self, MaybeUninit},
+    mem::MaybeUninit,
     sync::{Arc, RwLock},
     time::Duration,
 };
@@ -39,6 +39,13 @@ pub struct DeviceMessage {
     action: Action,
 }
 
+/// Active remote connections keyed by UDID — at most one tick source per device
+/// so USB+WiFi dual attach does not double-feed history.
+struct ConnectedDevice {
+    device: Device,
+    conn: ServiceConnection,
+}
+
 pub fn start_device_listener() -> mpsc::Receiver<DeviceMessage> {
     let (tx, rx) = mpsc::channel::<DeviceMessage>(10);
 
@@ -50,20 +57,23 @@ pub fn start_device_listener() -> mpsc::Receiver<DeviceMessage> {
         let tx = tx.clone();
 
         async_runtime::spawn(async move {
-            tx.send(DeviceMessage {
-                device,
-                action: info.action,
-            })
-            .await
-            .unwrap();
-            mem::forget(tx);
+            if let Err(err) = tx
+                .send(DeviceMessage {
+                    device,
+                    action: info.action,
+                })
+                .await
+            {
+                log::error!("Failed to send device message: {err}");
+            }
+            // Let Sender drop normally — do not mem::forget.
         });
     }
 
     spawn_blocking(move || {
         let boxed = Arc::new(tx);
         let mut not = MaybeUninit::uninit();
-        unsafe {
+        let result = unsafe {
             AMDeviceNotificationSubscribe(
                 callback,
                 0,
@@ -72,61 +82,121 @@ pub fn start_device_listener() -> mpsc::Receiver<DeviceMessage> {
                 not.as_mut_ptr(),
             )
         };
+        if result != 0 {
+            log::error!("AMDeviceNotificationSubscribe failed: {result}");
+            return;
+        }
+        // Keep the Arc alive for the lifetime of the run loop.
+        let _keep = boxed;
         unsafe { CFRunLoopRun() };
     });
 
     rx
 }
 
+fn prefer_usb(existing: InterfaceType, incoming: InterfaceType) -> bool {
+    matches!(incoming, InterfaceType::USB) && !matches!(existing, InterfaceType::USB)
+}
+
 pub fn start_device_sender(handle: AppHandle) -> async_runtime::JoinHandle<()> {
     let mut rx = start_device_listener();
     let mut timer = time::interval(Duration::from_millis(2000));
 
-    let mut devices: HashMap<Device, ServiceConnection> = HashMap::new();
+    let mut devices: HashMap<String, ConnectedDevice> = HashMap::new();
 
     async_runtime::spawn(async move {
         loop {
             select! {
                 _ = timer.tick() => {
-                    for (device, conn) in devices.iter() {
-                        match get_device_ioreg(conn) {
-                            Ok(res) => DevicePowerTickEvent {
-                                udid: device.udid.clone(),
-                                data: NormalizedResource::from(&res),
-                            }.emit(&handle).unwrap(),
+                    for connected in devices.values() {
+                        match get_device_ioreg(&connected.conn) {
+                            Ok(res) => {
+                                if let Err(err) = (DevicePowerTickEvent {
+                                    udid: connected.device.udid.clone(),
+                                    data: NormalizedResource::from(&res),
+                                }).emit(&handle) {
+                                    log::error!("Failed to emit DevicePowerTickEvent: {err}");
+                                }
+                            }
                             Err(err) => {
                                 log::error!("Failed to get IORegistry: {err}");
                             }
                         }
                     }
                 }
-                Some(DeviceMessage { device, action }) = rx.recv() => {
+                Some(DeviceMessage { mut device, action }) = rx.recv() => {
                     match action {
                         Action::Attached => {
-                            // unwrap pair
-                            device.prepare_device().unwrap();
-                            let conn = device.start_service("com.apple.mobile.diagnostics_relay");
+                            let udid = device.udid.clone();
+                            if udid.is_empty() {
+                                log::warn!("Ignoring attached device with empty UDID");
+                                continue;
+                            }
 
-                            DeviceEvent {
-                                udid: device.udid.clone(),
+                            // Emit UI event even if we keep an existing connection.
+                            let name_after_prepare;
+
+                            if let Some(existing) = devices.get(&udid) {
+                                if !prefer_usb(existing.device.interface_type, device.interface_type) {
+                                    // Keep existing tick source; still notify UI of the interface.
+                                    if let Err(err) = (DeviceEvent {
+                                        udid: udid.clone(),
+                                        name: existing.device.name(),
+                                        interface: device.interface_type,
+                                        action,
+                                    }).emit(&handle) {
+                                        log::error!("Failed to emit DeviceEvent: {err}");
+                                    }
+                                    continue;
+                                }
+                            }
+
+                            if let Err(err) = device.prepare_device() {
+                                log::error!("Failed to prepare device {udid}: {err}");
+                                continue;
+                            }
+
+                            name_after_prepare = device.name();
+
+                            let conn = match device.start_service("com.apple.mobile.diagnostics_relay") {
+                                Ok(conn) => conn,
+                                Err(err) => {
+                                    log::error!("Failed to start diagnostics_relay on {udid}: {err}");
+                                    continue;
+                                }
+                            };
+
+                            if let Err(err) = (DeviceEvent {
+                                udid: udid.clone(),
                                 // must call `device.name()` after `device.prepare_device()`
-                                // or name will be empty causing panic
-                                name: device.name(),
+                                name: name_after_prepare,
                                 interface: device.interface_type,
                                 action,
-                            }.emit(&handle).unwrap();
+                            }).emit(&handle) {
+                                log::error!("Failed to emit DeviceEvent: {err}");
+                            }
 
-                            devices.insert(device, conn);
+                            devices.insert(udid, ConnectedDevice { device, conn });
                         },
                         Action::Detached => {
                             log::debug!("Device detached: {}", device.udid);
-                            DeviceEvent {
+                            if let Err(err) = (DeviceEvent {
                                 udid: device.udid.clone(),
                                 name: String::new(),
                                 interface: device.interface_type,
                                 action,
-                            }.emit(&handle).unwrap();
-                            devices.remove(&device);
+                            }).emit(&handle) {
+                                log::error!("Failed to emit DeviceEvent: {err}");
+                            }
+
+                            // Only drop the active connection if this detach matches
+                            // the interface we are currently polling.
+                            if let Some(connected) = devices.get(&device.udid) {
+                                if connected.device.interface_type == device.interface_type {
+                                    devices.remove(&device.udid);
+                                }
+                            }
+                            // Detached wrapper never prepared a session — Drop is a no-op.
                         },
                         _ => ()
                     }
@@ -142,9 +212,14 @@ pub fn setup_device_listener(app: AppHandle) {
         let app_state = app.state::<DeviceState>();
 
         use scopefn::Run;
-        app_state
-            .write()
-            .unwrap()
+        let mut guard = match app_state.write() {
+            Ok(g) => g,
+            Err(e) => {
+                log::error!("DeviceState lock poisoned: {e}");
+                return;
+            }
+        };
+        guard
             .entry(event.udid.clone())
             .or_insert_with(|| (event.name, HashSet::new()))
             .run(|e| match event.action {
@@ -153,6 +228,10 @@ pub fn setup_device_listener(app: AppHandle) {
                 }
                 Action::Detached => {
                     e.1.remove(&event.interface);
+                    if e.1.is_empty() {
+                        // Keep the map entry so name lookup still works briefly;
+                        // empty interface set is the offline signal for the UI.
+                    }
                 }
                 _ => (),
             });

@@ -38,7 +38,7 @@ const {
             leave-active-class="duration-500"
           >
             <TabsTrigger key="local" class="px-0" value="local">
-              <LaptopIcon class="mx-3 size-4" :class="[tab === 'local' ? 'text-blue-500' : 'text-muted-foreground']" />
+              <LaptopIcon class="mx-3 size-4" :class="[tab === 'local' ? 'text-primary' : 'text-muted-foreground']" />
             </TabsTrigger>
 
             <TabsTrigger
@@ -47,7 +47,7 @@ const {
               class="px-0"
               :value="udid"
             >
-              <MobileIcon class="mx-3 size-4" :class="[tab === udid ? 'text-blue-500' : 'text-muted-foreground']" />
+              <MobileIcon class="mx-3 size-4" :class="[tab === udid ? 'text-primary' : 'text-muted-foreground']" />
             </TabsTrigger>
           </TransitionGroup>
         </TabsList>

@@ -14,7 +14,7 @@ const power = usePower()
         <Thermometer class="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div v-if="!power.isLoading" class="text-2xl font-bold">
+        <div v-if="!power.isLoading" class="text-2xl font-bold font-mono">
           {{ power.temperature.toFixed(1) }}°C
         </div>
         <Skeleton v-else class="w-12 h-8" />
@@ -31,9 +31,12 @@ const power = usePower()
         <Battery class="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div v-if="!power.isLoading" class="text-2xl font-bold">
-          <!-- TODO: typing -->
-          {{ (power.maxCapacity / power.designCapacity! * 100).toFixed(1) }}%
+        <div v-if="!power.isLoading" class="text-2xl font-bold font-mono">
+          {{
+            (power.designCapacity ?? 0) > 0
+              ? `${(power.maxCapacity / power.designCapacity! * 100).toFixed(1)}%`
+              : '—'
+          }}
         </div>
         <Skeleton v-else class="w-12 h-8" />
         <p class="text-xs text-muted-foreground">
@@ -49,7 +52,7 @@ const power = usePower()
         <Cpu class="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div v-if="!power.isLoading" class="text-2xl font-bold">
+        <div v-if="!power.isLoading" class="text-2xl font-bold font-mono">
           {{ power.cycleCount }} {{ $t('times') }}
         </div>
         <Skeleton v-else class="w-12 h-8" />
@@ -66,7 +69,7 @@ const power = usePower()
         <CloudLightning class="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div v-if="!power.isLoading" class="text-2xl font-bold">
+        <div v-if="!power.isLoading" class="text-2xl font-bold font-mono">
           {{ power.currentCapacity }}mAh
         </div>
         <Skeleton v-else class="w-12 h-8" />

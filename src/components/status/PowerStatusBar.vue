@@ -6,12 +6,12 @@ const power = usePower()
 const { t } = useI18n()
 
 const colors = [
-  'bg-blue-500',
-  'bg-blue-600',
-  'bg-blue-700',
-  'bg-blue-800',
-  'bg-blue-900',
-  'bg-blue-950',
+  'hsl(var(--primary))',
+  'hsl(var(--primary) / 0.82)',
+  'hsl(var(--primary) / 0.64)',
+  'hsl(var(--primary) / 0.46)',
+  'hsl(var(--primary) / 0.30)',
+  'hsl(var(--primary) / 0.16)',
 ]
 
 const localeMap = computed(() => ({
@@ -47,12 +47,13 @@ const handle = watchEffect(() => {
   if (!power.value.isRemote) {
     parts.screen = power.value.brightnessPower
     parts.heatpipe = power.value.heatpipePower
-    parts.systemOther = parts.systemTotal - parts.screen - parts.heatpipe
+    parts.systemOther = Math.max(0, parts.systemTotal - parts.screen - parts.heatpipe)
     delete parts.systemTotal
   }
 
   let current = 0
   const sorted = Object.entries(parts)
+    .filter(([, value]) => Number.isFinite(value) && value > 0)
     .sort((a, b) => b[1] - a[1])
     .map(([key, value]) => {
       const ret = [key, current] as const
@@ -63,17 +64,18 @@ const handle = watchEffect(() => {
   const sum = power.value.isCharging
     ? power.value.systemIn + power.value.efficiencyLoss
     : power.value.systemLoad
+  const safeSum = Number.isFinite(sum) && sum > 0 ? sum : 1
   data.value = {
-    parts: Object.entries(parts)
-      .map(([key, value]) =>
+    parts: sorted
+      .map(([key, left], index) =>
         [key, {
-          value,
-          left: sorted[sorted.findIndex(([k]) => k === key)][1] / sum,
-          color: colors[sorted.findIndex(([k]) => k === key)],
+          value: parts[key],
+          left: left / safeSum,
+          color: colors[index % colors.length],
           locale: localeMap.value[key as keyof UnwrapRef<typeof localeMap>],
         }],
       ),
-    sum,
+    sum: safeSum,
   }
 })
 
@@ -90,7 +92,7 @@ watchEffect(() => {
   <div
     v-if="data"
     class="relative h-3 overflow-hidden rounded flex transition-all duration-500"
-    :class="[hovered ? '' : 'bg-blue-500']"
+    :style="{ backgroundColor: hovered ? '' : 'hsl(var(--primary))' }"
     @mouseleave="hovered = null"
   >
     <CommonTooltip
@@ -104,8 +106,8 @@ watchEffect(() => {
       </template>
       <div
         class="absolute top-0 bottom-0 transition-all duration-500"
-        :class="[hovered && hovered !== key ? 'opacity-20' : 'opacity-100', color]"
-        :style="{ width: `calc(${(value / data.sum) * 100}% + 1px)`, left: `${left * 100}%` }"
+        :class="[hovered && hovered !== key ? 'opacity-20' : 'opacity-100']"
+        :style="{ width: `calc(${(value / data.sum) * 100}% + 1px)`, left: `${left * 100}%`, backgroundColor: color }"
         @mouseover="hovered = key"
       />
     </CommonTooltip>
