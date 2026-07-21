@@ -5,7 +5,7 @@ use specta::Type;
 use tauri::{async_runtime, Manager, Runtime};
 use tauri_plugin_pinia::ManagerExt;
 use tauri_specta::Event;
-use tokio::{select, sync::mpsc, time};
+use tokio::{select, sync::mpsc, time::{self, Instant}};
 use tpower::{
     ffi::smc::{SMCConnection, SMCPowerData, SMCReadSensor},
     provider::{get_mac_ioreg, NormalizedResource},
@@ -18,6 +18,36 @@ pub enum SenderMessage {
     ChangeInterval(Duration),
     ChangeStatusBarItem(StatusBarItem),
     StatusBarShowCharging(bool),
+}
+
+/// Minimum (500 ms) and maximum (60 s) bounds for the power-tick interval.
+///
+/// Stale preference files (e.g. `updateInterval: 86400000` persisted by
+/// earlier builds) would otherwise stall the chart for up to a day.
+const MIN_INTERVAL_MS: u64 = 500;
+const MAX_INTERVAL_MS: u64 = 60_000;
+
+fn sanitize_interval_ms(ms: u64) -> Duration {
+    if ms < MIN_INTERVAL_MS {
+        log::warn!("updateInterval {ms}ms too small, clamped to {MIN_INTERVAL_MS}ms");
+        Duration::from_millis(MIN_INTERVAL_MS)
+    } else if ms > MAX_INTERVAL_MS {
+        log::warn!("updateInterval {ms}ms too large, clamped to {MAX_INTERVAL_MS}ms");
+        Duration::from_millis(MAX_INTERVAL_MS)
+    } else {
+        Duration::from_millis(ms)
+    }
+}
+
+fn sanitize_interval(ms: u64) -> Duration {
+    sanitize_interval_ms(ms)
+}
+
+fn make_interval(period: Duration) -> time::Interval {
+    // Avoid the immediate first tick that `interval()` fires on creation.
+    let mut timer = time::interval_at(Instant::now() + period, period);
+    timer.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
+    timer
 }
 
 pub fn status_bar_text(
@@ -62,7 +92,7 @@ pub fn start_sender<R: Runtime>(
     let app = app.app_handle().clone();
     let mut smc_conn = SMCConnection::new("AppleSMC").unwrap();
 
-    let mut timer = time::interval(Duration::from_millis(
+    let mut timer = make_interval(sanitize_interval(
         app.pinia()
             .try_get::<u64>("preference", "updateInterval")
             .unwrap_or(2000),
@@ -73,7 +103,7 @@ pub fn start_sender<R: Runtime>(
         .unwrap_or(StatusBarItem::System);
     let mut show_charging = app
         .pinia()
-        .try_get::<bool>("preference", "showCharging")
+        .try_get::<bool>("preference", "statusBarShowCharging")
         .unwrap_or(true);
 
     async_runtime::spawn(async move {
@@ -81,42 +111,96 @@ pub fn start_sender<R: Runtime>(
             select! {
                 _ = timer.tick() => {
                     let smc = smc_conn.read_sensor();
-                    PowerUpdatedEvent::new_with(&smc, &status_bar_item, show_charging)
-                        .emit(&app)
-                        .unwrap();
-                    PowerTickEvent {
-                        data: (&get_mac_ioreg().unwrap(), &smc).into(),
-                    }.emit(&app).unwrap();
+                    match get_mac_ioreg() {
+                        Ok(ioreg) => {
+                            let data: NormalizedResource = (&ioreg, &smc).into();
+                            // Prefer IOKit-derived charging flag for the tray value.
+                            let bar = if data.is_charging && show_charging {
+                                smc.delivery_rate
+                            } else {
+                                status_bar_text(&smc, &status_bar_item, false)
+                            };
+                            if let Err(err) = PowerUpdatedEvent::new(bar).emit(&app) {
+                                log::error!("Failed to emit PowerUpdatedEvent: {err}");
+                            }
+                            if let Err(err) = (PowerTickEvent { data }).emit(&app) {
+                                log::error!("Failed to emit PowerTickEvent: {err}");
+                            }
+                        }
+                        Err(err) => {
+                            log::error!("Failed to get IORegistry: {err}");
+                            if let Err(err) = PowerUpdatedEvent::new_with(
+                                &smc,
+                                &status_bar_item,
+                                show_charging,
+                            )
+                            .emit(&app)
+                            {
+                                log::error!("Failed to emit PowerUpdatedEvent: {err}");
+                            }
+                        }
+                    }
                 }
                 Some(msg) = rx.recv() => match msg {
                     SenderMessage::ImmediateSend => {
                         let smc = smc_conn.read_sensor();
-                        PowerUpdatedEvent::new_with(&smc, &status_bar_item, show_charging)
-                            .emit(&app)
-                            .unwrap();
-                        PowerTickEvent {
-                            data:  (&get_mac_ioreg().unwrap(), &smc).into()
-                        }.emit(&app).unwrap();
+                        match get_mac_ioreg() {
+                            Ok(ioreg) => {
+                                let data: NormalizedResource = (&ioreg, &smc).into();
+                                let bar = if data.is_charging && show_charging {
+                                    smc.delivery_rate
+                                } else {
+                                    status_bar_text(&smc, &status_bar_item, false)
+                                };
+                                if let Err(err) = PowerUpdatedEvent::new(bar).emit(&app) {
+                                    log::error!("Failed to emit PowerUpdatedEvent: {err}");
+                                }
+                                if let Err(err) = (PowerTickEvent { data }).emit(&app) {
+                                    log::error!("Failed to emit PowerTickEvent: {err}");
+                                }
+                            }
+                            Err(err) => {
+                                log::error!("Failed to get IORegistry: {err}");
+                                if let Err(err) = PowerUpdatedEvent::new_with(
+                                    &smc,
+                                    &status_bar_item,
+                                    show_charging,
+                                )
+                                .emit(&app)
+                                {
+                                    log::error!("Failed to emit PowerUpdatedEvent: {err}");
+                                }
+                            }
+                        }
                     },
                     SenderMessage::ChangeInterval(interval) => {
-                        timer = time::interval(if interval < Duration::from_millis(500) {
-                            log::warn!("interval is too small, set to 500ms");
-                            Duration::from_millis(500)
-                        } else {
-                            interval
-                        });
+                        timer = make_interval(sanitize_interval_ms(
+                            interval.as_millis() as u64,
+                        ));
                     },
                     SenderMessage::ChangeStatusBarItem(item) => {
                         status_bar_item = item;
-                        PowerUpdatedEvent::new_with(&smc_conn.read_sensor(), &status_bar_item, show_charging)
-                            .emit(&app)
-                            .unwrap();
+                        if let Err(err) = PowerUpdatedEvent::new_with(
+                            &smc_conn.read_sensor(),
+                            &status_bar_item,
+                            show_charging,
+                        )
+                        .emit(&app)
+                        {
+                            log::error!("Failed to emit PowerUpdatedEvent: {err}");
+                        }
                     },
                     SenderMessage::StatusBarShowCharging(show) => {
                         show_charging = show;
-                        PowerUpdatedEvent::new_with(&smc_conn.read_sensor(), &status_bar_item, show_charging)
-                            .emit(&app)
-                            .unwrap();
+                        if let Err(err) = PowerUpdatedEvent::new_with(
+                            &smc_conn.read_sensor(),
+                            &status_bar_item,
+                            show_charging,
+                        )
+                        .emit(&app)
+                        {
+                            log::error!("Failed to emit PowerUpdatedEvent: {err}");
+                        }
                     }
                 }
             }

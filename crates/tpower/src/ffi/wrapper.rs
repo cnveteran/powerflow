@@ -26,7 +26,7 @@ unsafe impl Send for ServiceConnection {}
 unsafe impl Sync for ServiceConnection {}
 
 impl ServiceConnection {
-    fn start(device: AMDeviceRef, service_name: &str) -> Self {
+    fn start(device: AMDeviceRef, service_name: &str) -> Result<Self, DeviceError> {
         unsafe {
             let service_name = cfstr!(service_name);
             let service_ptr: AMDServiceConnectionRef = null_mut();
@@ -39,10 +39,10 @@ impl ServiceConnection {
             );
 
             if result != 0 {
-                panic!("couldn't start service {}", result);
+                return Err(DeviceError::Service(result));
             }
 
-            ServiceConnection(service_ptr)
+            Ok(ServiceConnection(service_ptr))
         }
     }
 
@@ -75,11 +75,15 @@ impl Drop for ServiceConnection {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Device {
     pub device: AMDeviceRef,
     pub udid: String,
     pub interface_type: InterfaceType,
+    /// True after a successful `prepare_device` — only then should Drop tear
+    /// down the session. Detached notification wrappers share the same
+    /// `AMDeviceRef` and must not disconnect again.
+    session_active: bool,
 }
 
 unsafe impl Send for Device {}
@@ -99,19 +103,26 @@ pub enum DeviceError {
 
     #[error("session failed: {0}")]
     Session(i32),
+
+    #[error("couldn't start service: {0}")]
+    Service(i32),
 }
 
 impl Device {
     /// # Safety
     /// `device` must be a valid AMDeviceRef
     pub unsafe fn new(device: AMDeviceRef) -> Self {
-        let udid =
-            unsafe { CFString::wrap_under_create_rule(AMDeviceCopyDeviceIdentifier(device)) }
-                .to_string();
+        let id_ref = unsafe { AMDeviceCopyDeviceIdentifier(device) };
+        let udid = if id_ref.is_null() {
+            String::new()
+        } else {
+            unsafe { CFString::wrap_under_create_rule(id_ref) }.to_string()
+        };
         Self {
             device,
             udid,
             interface_type: unsafe { AMDeviceGetInterfaceType(device) },
+            session_active: false,
         }
     }
 
@@ -123,6 +134,10 @@ impl Device {
                 cfstr!("DeviceName").as_concrete_TypeRef(),
             )
         } as CFStringRef;
+
+        if name.is_null() {
+            return String::new();
+        }
 
         unsafe { CFString::wrap_under_create_rule(name) }.to_string()
     }
@@ -142,9 +157,12 @@ impl Device {
         }
     }
 
-    pub fn disconnect(&self) {
-        unsafe { AMDeviceStopSession(self.device) };
-        unsafe { AMDeviceDisconnect(self.device) };
+    pub fn disconnect(&mut self) {
+        if self.session_active {
+            unsafe { AMDeviceStopSession(self.device) };
+            unsafe { AMDeviceDisconnect(self.device) };
+            self.session_active = false;
+        }
     }
 
     pub fn is_paired(&self) -> bool {
@@ -178,24 +196,24 @@ impl Device {
         }
     }
 
-    pub fn prepare_device(&self) -> Result<(), DeviceError> {
+    pub fn prepare_device(&mut self) -> Result<(), DeviceError> {
         self.connect()?;
         if !self.is_paired() {
             self.pair()?;
         }
         self.validate_pairing()?;
         self.start_session()?;
+        self.session_active = true;
         Ok(())
     }
 
-    pub fn start_service(&self, service_name: &str) -> ServiceConnection {
+    pub fn start_service(&self, service_name: &str) -> Result<ServiceConnection, DeviceError> {
         ServiceConnection::start(self.device, service_name)
     }
 }
 
 impl Drop for Device {
     fn drop(&mut self) {
-        self.stop_session();
         self.disconnect();
     }
 }

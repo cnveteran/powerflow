@@ -109,7 +109,7 @@ extern "C" {
         unknown1: i32,
         context: *mut c_void,
         notification: *mut AMDeviceNotification,
-    );
+    ) -> i32;
     pub fn AMDeviceNotificationUnsubscribe(notification: *mut c_void);
     pub fn AMDeviceNotificationSubscribeWithOptions(
         callback: AMDeviceNotificationCallback,

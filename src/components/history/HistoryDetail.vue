@@ -84,8 +84,12 @@ async function exportData() {
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 class="text-red-500 focus:text-red-500 focus:bg-red-500/10"
-                @click="() => {
-                  commands.deleteHistoryById(id)
+                @click="async () => {
+                  const result = await commands.deleteHistoryById(id)
+                  if (result.status === 'error') {
+                    logerror(result.error)
+                    return
+                  }
                   selectedItem = null
                   history.update()
                 }"
@@ -132,7 +136,11 @@ async function exportData() {
             Charging rate
           </div>
           <div class="text-2xl font-bold">
-            {{ ((endLevel - fromLevel) / chargingTime * 60).toFixed(2) }}%/min
+            {{
+              chargingTime > 0
+                ? `${((endLevel - fromLevel) / chargingTime * 60).toFixed(2)}%/min`
+                : '—'
+            }}
           </div>
           <div class="text-xs text-muted-foreground">
             Avg Temp: {{ data.avg.temperature.toFixed(1) }}°C

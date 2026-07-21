@@ -162,7 +162,7 @@ function SettingsSection(props: SettingsSectionProps) {
           v-else
           id="animations"
           v-model:checked="preference.animationsEnabled"
-          class="data-[state=checked]:bg-blue-500"
+          class="data-[state=checked]:bg-primary"
         />
       </SettingsItem>
     </div>
@@ -190,6 +190,7 @@ function SettingsSection(props: SettingsSectionProps) {
           }"
           locale="en-US"
           :min="500"
+          :max="60000"
           :step="500"
           class="w-32"
         >
@@ -208,7 +209,7 @@ function SettingsSection(props: SettingsSectionProps) {
       >
         <Switch
           id="background-monitoring"
-          class="data-[state=checked]:bg-blue-500"
+          class="data-[state=checked]:bg-primary"
           disabled
           checked
         />
@@ -244,7 +245,7 @@ function SettingsSection(props: SettingsSectionProps) {
         :description="$t('settings.show_charging_power_desc')"
         :icon="BatteryCharging"
       >
-        <Switch v-model:checked="preference.statusBarShowCharging" class="data-[state=checked]:bg-blue-500" />
+        <Switch v-model:checked="preference.statusBarShowCharging" class="data-[state=checked]:bg-primary" />
       </SettingsItem>
     </div>
 

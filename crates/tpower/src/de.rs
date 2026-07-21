@@ -68,25 +68,73 @@ with_repr! {
         pub system_voltage_in: i32,
     }
 
+    // macOS 27+ moved DesignCapacity / FullChargeCapacity / RemainingCapacity
+    // into a nested BatteryData dict. Top-level MaxCapacity / CurrentCapacity
+    // on macOS 27 are percentages (0-100), not mAh, so callers that need real
+    // mAh values must read from this nested struct.
+    #[out, serde(rename_all = "camelCase"), cfg_attr(feature = "specta", derive(specta::Type))]
+    #[repr, serde(rename_all(deserialize = "PascalCase", serialize = "camelCase"))]
+    #[derive(Debug, Clone, Default, Deserialize, Serialize)]
+    pub struct BatteryData {
+        // Real mAh design capacity (e.g. 6249). 0 if absent.
+        #[serde(default)]
+        pub design_capacity: i32,
+        // Real mAh full-charge capacity (e.g. 6397). 0 if absent.
+        #[serde(default)]
+        pub full_charge_capacity: i32,
+        // Real mAh nominal charge capacity (e.g. 6549). 0 if absent.
+        #[serde(default)]
+        pub nominal_charge_capacity: i32,
+        // Real mAh remaining capacity (e.g. 6397). 0 if absent.
+        #[serde(default)]
+        pub remaining_capacity: i32,
+        // Also nested on macOS 27 — top-level value is missing.
+        #[serde(default)]
+        pub absolute_capacity: i32,
+    }
+
     #[out, serde(rename_all = "camelCase"), cfg_attr(feature = "specta", derive(specta::Type))]
     #[repr, serde(rename_all(deserialize = "PascalCase", serialize = "camelCase"))]
     #[derive(Debug, Clone, Default, Deserialize, Serialize)]
     pub struct IORegistry {
         pub adapter_details: AdapterDetails,
         pub power_telemetry_data: Option<PowerTelemetryData>,
+        // macOS 27+ exposes real mAh capacity figures only inside this
+        // nested dict; the top-level MaxCapacity / CurrentCapacity keys
+        // are percentages (0-100) on macOS 27.
+        #[serde(default)]
+        pub battery_data: Option<BatteryData>,
+        // macOS 27+ no longer exposes AbsoluteCapacity at the top level of
+        // AppleSmartBattery (it moved into the nested BatteryData dict).
+        #[serde(default)]
         pub absolute_capacity: i32,
         pub amperage: i32,
         pub voltage: i32,
         pub apple_raw_battery_voltage: Option<i32>,
+        // macOS 27+ no longer exposes AppleRawCurrentCapacity /
+        // AppleRawMaxCapacity via AppleSmartBattery. Default to 0 and let
+        // callers fall back to CurrentCapacity / MaxCapacity (percent 0-100).
+        #[serde(default)]
         pub apple_raw_current_capacity: i32,
+        #[serde(default)]
         pub apple_raw_max_capacity: i32,
         pub current_capacity: i32,
         pub cycle_count: i32,
+        // macOS 27+ moved DesignCapacity into the nested BatteryData dict,
+        // so the top-level key is often missing.
+        #[serde(default)]
         pub design_capacity: i32,
+        // macOS 27 no longer exposes FullyCharged / InstantAmperage at the
+        // top level of AppleSmartBattery. Without `default`, plist parsing
+        // fails and the whole IORegistry becomes unavailable.
+        #[serde(default)]
         pub fully_charged: bool,
+        #[serde(default)]
         pub instant_amperage: i32,
         pub is_charging: bool,
         pub max_capacity: i32,
+        // Temperature is not always present (e.g. macOS 27 beta).
+        #[serde(default)]
         pub temperature: i32,
         pub time_remaining: i32,
         // TODO: check
