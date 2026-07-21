@@ -41,6 +41,6 @@ jobs:
         with:
           name: Powerflow-dmg
           path: |
-            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
-            src-tauri/target/*/release/bundle/dmg/*.dmg
+            target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            **/bundle/dmg/*.dmg
           if-no-files-found: error
