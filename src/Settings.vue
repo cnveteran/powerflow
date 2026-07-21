@@ -190,6 +190,7 @@ function SettingsSection(props: SettingsSectionProps) {
           }"
           locale="en-US"
           :min="500"
+          :max="60000"
           :step="500"
           class="w-32"
         >

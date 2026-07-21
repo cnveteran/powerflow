@@ -13,7 +13,7 @@ use core_foundation::{
 };
 use derive_more::Add;
 use io_kit_sys::{
-    ret::kIOReturnSuccess, IOMasterPort, IORegistryEntryCreateCFProperties,
+    ret::kIOReturnSuccess, IOMasterPort, IOObjectRelease, IORegistryEntryCreateCFProperties,
     IOServiceGetMatchingService, IOServiceMatching,
 };
 use ratatui::widgets::SparklineBar;
@@ -137,7 +137,9 @@ impl From<&IORegistry> for NormalizedResource {
         Self {
             is_local: false,
             is_charging: io.is_charging,
-            time_remain: Duration::from_secs(io.time_remaining as u64 * 60),
+            // Same sentinel handling as local — iOS often reports -1 / 65535
+            // while TimeRemaining is still computing.
+            time_remain: time_remain_iokit(io.time_remaining).unwrap_or(Duration::ZERO),
             last_update: io.update_time,
             adapter_name: io
                 .adapter_details
@@ -174,7 +176,9 @@ impl From<(&IORegistry, &SMCPowerData)> for NormalizedResource {
         Self {
             is_local: true,
             last_update: io.update_time,
-            is_charging: smc.is_charging(),
+            // Prefer amperage / IOKit over SMC CHCC — on macOS 27 CHCC can
+            // stay true while the battery is discharging.
+            is_charging: is_charging_local(io, smc),
             // Prefer IORegistry's TimeRemaining (updated by IOKit every few
             // seconds) over SMC's B0TE/B0TF (which can stay stale for many
             // minutes). IOKit uses -1 (or a very large value) to signal
@@ -214,6 +218,35 @@ impl From<(&IORegistry, &SMCPowerData)> for NormalizedResource {
     }
 }
 
+const IOKIT_UNKNOWN: i32 = -1;
+const IOKIT_SENTINEL: i32 = 65535;
+const MAX_PLAUSIBLE_MIN: i32 = 24 * 60;
+
+/// Convert IOKit `TimeRemaining` (minutes) to a Duration, rejecting sentinels.
+fn time_remain_iokit(minutes: i32) -> Option<Duration> {
+    if minutes != IOKIT_UNKNOWN
+        && minutes != IOKIT_SENTINEL
+        && (1..=MAX_PLAUSIBLE_MIN).contains(&minutes)
+    {
+        Some(Duration::from_secs((minutes as u64) * 60))
+    } else {
+        None
+    }
+}
+
+/// Local charging detection that does not trust SMC `CHCC` alone.
+fn is_charging_local(io: &IORegistry, smc: &SMCPowerData) -> bool {
+    // Instant amperage sign is the most reliable signal when present.
+    if io.instant_amperage != 0 {
+        return io.instant_amperage > 0;
+    }
+    if io.amperage != 0 {
+        return io.amperage > 0;
+    }
+    // Fall back to IOKit flag, then SMC only if IOKit is silent.
+    io.is_charging || smc.is_charging()
+}
+
 /// Pick the most reliable remaining-time estimate.
 ///
 /// IOKit exposes `TimeRemaining` (minutes) via `AppleSmartBattery` and
@@ -229,16 +262,8 @@ impl From<(&IORegistry, &SMCPowerData)> for NormalizedResource {
 /// display "1000+ hours to full". Instead we try both SMC values and
 /// keep whichever is plausible.
 fn time_remain_from(io: &IORegistry, smc: &SMCPowerData) -> Duration {
-    const IOKIT_UNKNOWN: i32 = -1;
-    const IOKIT_SENTINEL: i32 = 65535;
-    const MAX_PLAUSIBLE_MIN: i32 = 24 * 60;
-
-    let iokit_min = io.time_remaining;
-    if iokit_min != IOKIT_UNKNOWN
-        && iokit_min != IOKIT_SENTINEL
-        && (1..=MAX_PLAUSIBLE_MIN).contains(&iokit_min)
-    {
-        return Duration::from_secs((iokit_min as u64) * 60);
+    if let Some(d) = time_remain_iokit(io.time_remaining) {
+        return d;
     }
 
     // Try both SMC values; the one that's not a sentinel is the right one.
@@ -263,12 +288,19 @@ pub fn get_mac_ioreg_dict() -> anyhow::Result<CFDictionary> {
     let name = CString::new("AppleSmartBattery").unwrap();
     let matching_dict = unsafe { IOServiceMatching(name.as_ptr()) };
 
-    let result = unsafe { IOServiceGetMatchingService(master_port, matching_dict) };
+    let service = unsafe { IOServiceGetMatchingService(master_port, matching_dict) };
+    if service == 0 {
+        bail!("AppleSmartBattery service not found");
+    }
 
     let mut properties: CFMutableDictionaryRef = unsafe { mem::zeroed() };
-    if unsafe { IORegistryEntryCreateCFProperties(result, &mut properties, kCFAllocatorDefault, 0) }
-        != kIOReturnSuccess
-    {
+    let kr = unsafe {
+        IORegistryEntryCreateCFProperties(service, &mut properties, kCFAllocatorDefault, 0)
+    };
+    // IOServiceGetMatchingService returns a retained object — always release.
+    unsafe { IOObjectRelease(service) };
+
+    if kr != kIOReturnSuccess {
         bail!("could not get properties");
     }
 
