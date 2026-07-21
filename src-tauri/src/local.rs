@@ -20,6 +20,29 @@ pub enum SenderMessage {
     StatusBarShowCharging(bool),
 }
 
+/// Minimum (500 ms) and maximum (60 s) bounds for the power-tick interval.
+///
+/// Stale preference files (e.g. `updateInterval: 86400000` persisted by
+/// earlier builds) would otherwise stall the chart for up to a day.
+const MIN_INTERVAL_MS: u64 = 500;
+const MAX_INTERVAL_MS: u64 = 60_000;
+
+fn sanitize_interval_ms(ms: u64) -> Duration {
+    if ms < MIN_INTERVAL_MS {
+        log::warn!("updateInterval {ms}ms too small, clamped to {MIN_INTERVAL_MS}ms");
+        Duration::from_millis(MIN_INTERVAL_MS)
+    } else if ms > MAX_INTERVAL_MS {
+        log::warn!("updateInterval {ms}ms too large, clamped to {MAX_INTERVAL_MS}ms");
+        Duration::from_millis(MAX_INTERVAL_MS)
+    } else {
+        Duration::from_millis(ms)
+    }
+}
+
+fn sanitize_interval(ms: u64) -> Duration {
+    sanitize_interval_ms(ms)
+}
+
 pub fn status_bar_text(
     smc: &SMCPowerData,
     status_bar_item: &StatusBarItem,
@@ -62,7 +85,7 @@ pub fn start_sender<R: Runtime>(
     let app = app.app_handle().clone();
     let mut smc_conn = SMCConnection::new("AppleSMC").unwrap();
 
-    let mut timer = time::interval(Duration::from_millis(
+    let mut timer = time::interval(sanitize_interval(
         app.pinia()
             .try_get::<u64>("preference", "updateInterval")
             .unwrap_or(2000),
@@ -86,9 +109,8 @@ pub fn start_sender<R: Runtime>(
                         .unwrap();
                     match get_mac_ioreg() {
                         Ok(ioreg) => {
-                            PowerTickEvent {
-                                data: (&ioreg, &smc).into(),
-                            }.emit(&app).unwrap();
+                            let data: NormalizedResource = (&ioreg, &smc).into();
+                            PowerTickEvent { data }.emit(&app).unwrap();
                         }
                         Err(err) => {
                             log::error!("Failed to get IORegistry: {err}");
@@ -113,12 +135,9 @@ pub fn start_sender<R: Runtime>(
                         }
                     },
                     SenderMessage::ChangeInterval(interval) => {
-                        timer = time::interval(if interval < Duration::from_millis(500) {
-                            log::warn!("interval is too small, set to 500ms");
-                            Duration::from_millis(500)
-                        } else {
-                            interval
-                        });
+                        timer = time::interval(sanitize_interval_ms(
+                            interval.as_millis() as u64,
+                        ));
                     },
                     SenderMessage::ChangeStatusBarItem(item) => {
                         status_bar_item = item;
