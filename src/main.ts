@@ -13,10 +13,6 @@ const router = createRouter({
       path: '/history',
       component: () => import('./pages/History.vue'),
     },
-    {
-      path: '/history/:id',
-      component: () => import('./components/history/HistoryDetail.vue'),
-    },
   ],
 })
 

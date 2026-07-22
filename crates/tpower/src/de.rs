@@ -102,7 +102,7 @@ with_repr! {
         #[serde(default)]
         pub temperature: i32,
         pub time_remaining: i32,
-        // TODO: check
+        #[serde(default)]
         pub update_time: i64,
     }
 }
@@ -117,5 +117,73 @@ impl Deref for IORegistry {
 impl IORegistry {
     pub fn ptd(&self) -> Option<&PowerTelemetryData> {
         self.power_telemetry_data.as_ref()
+    }
+}
+
+impl From<repr::AdapterDetails> for AdapterDetails {
+    fn from(value: repr::AdapterDetails) -> Self {
+        Self {
+            adapter_voltage: value.adapter_voltage,
+            is_wireless: value.is_wireless,
+            watts: value.watts,
+            name: value.name,
+            current: value.current,
+            description: value.description,
+        }
+    }
+}
+
+impl From<repr::PowerTelemetryData> for PowerTelemetryData {
+    fn from(value: repr::PowerTelemetryData) -> Self {
+        Self {
+            adapter_efficiency_loss: value.adapter_efficiency_loss,
+            battery_power: value.battery_power,
+            system_current_in: value.system_current_in,
+            system_energy_consumed: value.system_energy_consumed,
+            system_load: value.system_load,
+            system_power_in: value.system_power_in,
+            system_voltage_in: value.system_voltage_in,
+        }
+    }
+}
+
+impl From<repr::IORegistry> for IORegistry {
+    fn from(value: repr::IORegistry) -> Self {
+        Self {
+            adapter_details: value.adapter_details.into(),
+            power_telemetry_data: value.power_telemetry_data.map(Into::into),
+            absolute_capacity: value.absolute_capacity,
+            amperage: value.amperage,
+            voltage: value.voltage,
+            apple_raw_battery_voltage: value.apple_raw_battery_voltage,
+            apple_raw_current_capacity: value.apple_raw_current_capacity,
+            apple_raw_max_capacity: value.apple_raw_max_capacity,
+            current_capacity: value.current_capacity,
+            cycle_count: value.cycle_count,
+            design_capacity: value.design_capacity,
+            fully_charged: value.fully_charged,
+            instant_amperage: value.instant_amperage,
+            is_charging: value.is_charging,
+            max_capacity: value.max_capacity,
+            temperature: value.temperature,
+            time_remaining: value.time_remaining,
+            update_time: value.update_time,
+        }
+    }
+}
+
+impl From<repr::Diagnostics> for Diagnostics {
+    fn from(value: repr::Diagnostics) -> Self {
+        Self {
+            ioregistry: value.ioregistry.into(),
+        }
+    }
+}
+
+impl From<repr::IORegistryDiagnostic> for IORegistryDiagnostic {
+    fn from(value: repr::IORegistryDiagnostic) -> Self {
+        Self {
+            diagnostics: value.diagnostics.into(),
+        }
     }
 }

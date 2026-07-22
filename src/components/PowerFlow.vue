@@ -10,31 +10,33 @@ const formatter = new Intl.NumberFormat('en-US', {
 interface FlowItemProps {
   tooltip: string
   icon: Component
-  color: string
+  color: 'text-power-input' | 'text-power-system' | 'text-power-battery' | 'text-power-screen' | 'text-power-thermal'
 }
 
 const colorMap = {
-  'text-yellow-500': 'text-yellow-950 dark:text-yellow-50 hover:bg-yellow-500/5 hover:border-yellow-500/20',
-  'text-blue-500': 'text-blue-950 dark:text-blue-50 hover:bg-blue-500/5 hover:border-blue-500/20',
-  'text-cyan-500': 'text-cyan-950 dark:text-cyan-50 hover:bg-cyan-500/5 hover:border-cyan-500/20',
-  'text-indigo-500': 'text-indigo-950 dark:text-indigo-50 hover:bg-indigo-500/5 hover:border-indigo-500/20',
+  'text-power-input': 'hover:bg-power-input/5 hover:border-power-input/20',
+  'text-power-system': 'hover:bg-power-system/5 hover:border-power-system/20',
+  'text-power-battery': 'hover:bg-power-battery/5 hover:border-power-battery/20',
+  'text-power-screen': 'hover:bg-power-screen/5 hover:border-power-screen/20',
+  'text-power-thermal': 'hover:bg-power-thermal/5 hover:border-power-thermal/20',
 }
 
 const FlowItem: Component = ({ tooltip, icon, color }: FlowItemProps, { slots }) => {
   return (
     <CommonTooltip content={tooltip} as-child>
-      <div
+      <button
+        type="button"
         class={`
         w-24 shrink-0 flex justify-center items-center gap-2
-        rounded-lg border bg-background px-2 py-1.5 cursor-pointer
+        rounded-lg border bg-background px-2 py-1.5
         transition-colors ${colorMap[color]}`}
       >
         { h(icon, { class: `h-4 w-4 ${color}` }) }
         <span class="text-xs font-medium">
           { slots.default?.() }
-          <span class="ml-[1px]">w</span>
+          <span class="ml-[1px]"> W</span>
         </span>
-      </div>
+      </button>
     </CommonTooltip>
   )
 }
@@ -57,7 +59,7 @@ const power = usePower()
           v-if="power.isCharging"
           :tooltip="$t('flow.adapter_power')"
           :icon="CloudLightningIcon"
-          color="text-yellow-500"
+          color="text-power-input"
         >
           {{ formatter.format(power.systemIn + power.efficiencyLoss) }}
         </FlowItem>
@@ -67,25 +69,16 @@ const power = usePower()
           :content="`${$t('flow.power_loss')}: ${formatter.format(power.efficiencyLoss)}W`"
           as-child
         >
-          <Shimmer
-            :repeat-delay="1500"
-            class="rounded-full mx-2 w-full
-          [--base-color:theme(colors.blue.500)]
-          [--base-gradient-color:theme(colors.blue.300)]
-          dark:[--base-color:theme(colors.blue.700)]
-          dark:[--base-gradient-color:theme(colors.blue.400)]"
-          >
-            <div class="h-1 cursor-pointer" />
-          </Shimmer>
+          <div class="mx-2 h-1 w-full rounded-full bg-power-loss/40" />
         </CommonTooltip>
 
         <div class="flex flex-col items-center gap-2 bg-muted/50 rounded-lg border p-2">
           <div v-if="!power.isRemote" class="flex gap-4" color="text-blue-500">
-            <FlowItem :tooltip="$t('flow.screen_power')" :icon="Monitor" color="text-blue-500">
+            <FlowItem :tooltip="$t('flow.screen_power')" :icon="Monitor" color="text-power-screen">
               {{ formatter.format(power.brightnessPower || 0) }}
             </FlowItem>
 
-            <FlowItem :tooltip="$t('flow.heatpipe_power')" :icon="Cpu" color="text-indigo-500">
+            <FlowItem :tooltip="$t('flow.heatpipe_power')" :icon="Cpu" color="text-power-thermal">
               {{ formatter.format(power.heatpipePower || 0) }}
             </FlowItem>
           </div>
@@ -93,25 +86,15 @@ const power = usePower()
           <FlowItem
             :tooltip="$t('flow.system_total')"
             :icon="power.isRemote ? Smartphone : Laptop"
-            color="text-cyan-500"
+            color="text-power-system"
           >
             {{ formatter.format(power.systemLoad) }}
           </FlowItem>
         </div>
 
-        <Shimmer
-          :delay="2000"
-          :repeat-delay="1500"
-          class="rounded-full mx-2 w-full
-          [--base-color:theme(colors.blue.500)]
-          [--base-gradient-color:theme(colors.blue.300)]
-          dark:[--base-color:theme(colors.blue.700)]
-          dark:[--base-gradient-color:theme(colors.blue.400)]"
-        >
-          <div class="h-1 cursor-pointer" />
-        </Shimmer>
+        <div class="mx-2 h-1 w-full rounded-full bg-power-battery/50" />
 
-        <FlowItem :tooltip="power.isCharging ? $t('flow.battery_in') : $t('flow.battery_out')" :icon="Battery" color="text-blue-500">
+        <FlowItem :tooltip="power.isCharging ? $t('flow.battery_in') : $t('flow.battery_out')" :icon="Battery" color="text-power-battery">
           {{ formatter.format(power.batteryPower) }}
         </FlowItem>
       </div>

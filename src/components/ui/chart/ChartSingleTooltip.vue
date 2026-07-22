@@ -29,9 +29,12 @@ function template(d: any, i: number, elements: (HTMLElement | SVGElement)[]) {
         return { ...legendReference, value: props.valueFormatter(value) }
       })
       const TooltipComponent = props.customTooltip ?? ChartTooltip
-      createApp(TooltipComponent, { title: d[props.index], data: omittedData }).mount(componentDiv)
-      wm.set(d, componentDiv.innerHTML)
-      return componentDiv.innerHTML
+      const app = createApp(TooltipComponent, { title: d[props.index], data: omittedData })
+      app.mount(componentDiv)
+      const html = componentDiv.innerHTML
+      app.unmount()
+      wm.set(d, html)
+      return html
     }
   }
 
@@ -46,9 +49,12 @@ function template(d: any, i: number, elements: (HTMLElement | SVGElement)[]) {
       const omittedData = [{ name: data.name, value: props.valueFormatter(data[props.index]), color: style.fill }]
       const componentDiv = document.createElement('div')
       const TooltipComponent = props.customTooltip ?? ChartTooltip
-      createApp(TooltipComponent, { title: d[props.index], data: omittedData }).mount(componentDiv)
-      wm.set(d, componentDiv.innerHTML)
-      return componentDiv.innerHTML
+      const app = createApp(TooltipComponent, { title: data[props.index], data: omittedData })
+      app.mount(componentDiv)
+      const html = componentDiv.innerHTML
+      app.unmount()
+      wm.set(data, html)
+      return html
     }
   }
 }

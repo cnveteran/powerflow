@@ -27,9 +27,12 @@ function template(d: any) {
       return { ...legendReference, value }
     })
     const TooltipComponent = props.customTooltip ?? ChartTooltip
-    createApp(TooltipComponent, { title: d[props.index].toString(), data: omittedData }).mount(componentDiv)
-    wm.set(d, componentDiv.innerHTML)
-    return componentDiv.innerHTML
+    const app = createApp(TooltipComponent, { title: d[props.index].toString(), data: omittedData })
+    app.mount(componentDiv)
+    const html = componentDiv.innerHTML
+    app.unmount()
+    wm.set(d, html)
+    return html
   }
 }
 

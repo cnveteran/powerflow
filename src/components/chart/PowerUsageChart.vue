@@ -53,11 +53,16 @@ watch([localeMap, () => power.value.isCharging], async () => {
         v-else
         class="w-full h-[240px] font-bold"
         index="time"
-        :y-formatter="(value) => `${value}w`"
+        :y-formatter="(value) => `${value} W`"
         :data="localedData"
         :categories="localedCategories"
         :custom-tooltip="CustomChartTooltip"
-        :colors="['#2563eb', '#60a5fa', '#818cf8', '#0891b2']"
+        :colors="[
+          'hsl(var(--power-system))',
+          'hsl(var(--power-screen))',
+          'hsl(var(--power-thermal))',
+          'hsl(var(--power-input))',
+        ]"
       />
     </CardContent>
   </Card>

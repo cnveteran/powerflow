@@ -5,7 +5,7 @@ const power = usePower()
 </script>
 
 <template>
-  <div class="flex-1 grid gap-4 grid-cols-4">
+  <section class="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
     <Card>
       <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle class="text-sm font-medium">
@@ -14,7 +14,7 @@ const power = usePower()
         <Thermometer class="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div v-if="!power.isLoading" class="text-2xl font-bold">
+        <div v-if="!power.isLoading" class="metric-number text-2xl font-semibold">
           {{ power.temperature.toFixed(1) }}°C
         </div>
         <Skeleton v-else class="w-12 h-8" />
@@ -31,7 +31,7 @@ const power = usePower()
         <Battery class="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div v-if="!power.isLoading" class="text-2xl font-bold">
+        <div v-if="!power.isLoading" class="metric-number text-2xl font-semibold">
           {{
             (power.designCapacity ?? 0) > 0
               ? `${Math.min(power.maxCapacity / power.designCapacity! * 100, 100).toFixed(1)}%`
@@ -52,7 +52,7 @@ const power = usePower()
         <Cpu class="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div v-if="!power.isLoading" class="text-2xl font-bold">
+        <div v-if="!power.isLoading" class="metric-number text-2xl font-semibold">
           {{ power.cycleCount }} {{ $t('times') }}
         </div>
         <Skeleton v-else class="w-12 h-8" />
@@ -64,22 +64,22 @@ const power = usePower()
     <Card>
       <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle class="text-sm font-medium">
-          Energy
+          {{ $t('energy') }}
         </CardTitle>
         <CloudLightning class="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div v-if="!power.isLoading" class="text-2xl font-bold">
-          {{ power.currentCapacity }}mAh
+        <div v-if="!power.isLoading" class="metric-number text-2xl font-semibold">
+          {{ power.maxCapacity > 0 ? `${power.currentCapacity}mAh` : '—' }}
         </div>
         <Skeleton v-else class="w-12 h-8" />
         <p class="flex gap-2 text-xs text-muted-foreground">
-          Max Capacity: <span v-if="!power.isLoading">{{
-            power.maxCapacity
-          }}mAh</span>
+          {{ $t('max_capacity') }}: <span v-if="!power.isLoading">{{
+            power.maxCapacity > 0 ? `${power.maxCapacity}mAh` : '—'
+          }}</span>
           <Skeleton v-else class="w-12 h-4" />
         </p>
       </CardContent>
     </Card>
-  </div>
+  </section>
 </template>

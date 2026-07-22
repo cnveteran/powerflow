@@ -41,9 +41,7 @@ impl<'de> Deserialize<'de> for StatusBarItem {
                     "screen" => Ok(StatusBarItem::Screen),
                     "heatpipe" => Ok(StatusBarItem::Heatpipe),
                     other => {
-                        log::warn!(
-                            "Unknown StatusBarItem '{other}', falling back to System"
-                        );
+                        log::warn!("Unknown StatusBarItem '{other}', falling back to System");
                         Ok(StatusBarItem::System)
                     }
                 }

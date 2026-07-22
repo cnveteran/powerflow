@@ -34,6 +34,7 @@ pub struct NormalizedResource {
     pub is_local: bool,
     pub is_charging: bool,
     pub time_remain: Duration,
+    pub time_remain_known: bool,
     pub last_update: i64,
     pub adapter_name: Option<String>,
     pub cycle_count: i32,
@@ -101,7 +102,7 @@ impl Div<f32> for NormalizedData {
             efficiency_loss: self.efficiency_loss / rhs,
             brightness_power: self.brightness_power / rhs,
             heatpipe_power: self.heatpipe_power / rhs,
-            battery_level: self.battery_level / rhs as i32,
+            battery_level: (self.battery_level as f32 / rhs).round() as i32,
             absolute_battery_level: self.absolute_battery_level / rhs,
             temperature: self.temperature / rhs,
             adapter_watts: self.adapter_watts / rhs,
@@ -116,6 +117,16 @@ impl Deref for NormalizedResource {
 
     fn deref(&self) -> &Self::Target {
         &self.data
+    }
+}
+
+impl NormalizedResource {
+    /// Build a local sample when AppleSMC is unavailable. IORegistry telemetry
+    /// still provides the core system/battery measurements on supported Macs.
+    pub fn local_from_ioreg(io: &IORegistry) -> Self {
+        let mut resource = Self::from(io);
+        resource.is_local = true;
+        resource
     }
 }
 
@@ -134,13 +145,16 @@ impl From<&IORegistry> for NormalizedResource {
                 Default::default()
             };
 
+        let time_remain = time_remain_iokit(io.time_remaining);
+
         Self {
             is_local: false,
             is_charging: io.is_charging,
             // Same sentinel handling as local — iOS often reports -1 / 65535
             // while TimeRemaining is still computing.
-            time_remain: time_remain_iokit(io.time_remaining).unwrap_or(Duration::ZERO),
-            last_update: io.update_time,
+            time_remain: time_remain.unwrap_or(Duration::ZERO),
+            time_remain_known: time_remain.is_some(),
+            last_update: normalized_update_time(io.update_time),
             adapter_name: io
                 .adapter_details
                 .name
@@ -173,9 +187,11 @@ impl From<&IORegistry> for NormalizedResource {
 
 impl From<(&IORegistry, &SMCPowerData)> for NormalizedResource {
     fn from((io, smc): (&IORegistry, &SMCPowerData)) -> Self {
+        let time_remain = time_remain_from(io, smc);
+
         Self {
             is_local: true,
-            last_update: io.update_time,
+            last_update: normalized_update_time(io.update_time),
             // Prefer amperage / IOKit over SMC CHCC — on macOS 27 CHCC can
             // stay true while the battery is discharging.
             is_charging: is_charging_local(io, smc),
@@ -183,7 +199,8 @@ impl From<(&IORegistry, &SMCPowerData)> for NormalizedResource {
             // seconds) over SMC's B0TE/B0TF (which can stay stale for many
             // minutes). IOKit uses -1 (or a very large value) to signal
             // "still computing" / "unknown"; fall back to SMC in that case.
-            time_remain: time_remain_from(io, smc),
+            time_remain: time_remain.unwrap_or(Duration::ZERO),
+            time_remain_known: time_remain.is_some(),
             adapter_name: io
                 .adapter_details
                 .name
@@ -261,9 +278,9 @@ fn is_charging_local(io: &IORegistry, smc: &SMCPowerData) -> bool {
 /// (amperage < 0), which would cause us to pick the wrong sentinel and
 /// display "1000+ hours to full". Instead we try both SMC values and
 /// keep whichever is plausible.
-fn time_remain_from(io: &IORegistry, smc: &SMCPowerData) -> Duration {
+fn time_remain_from(io: &IORegistry, smc: &SMCPowerData) -> Option<Duration> {
     if let Some(d) = time_remain_iokit(io.time_remaining) {
-        return d;
+        return Some(d);
     }
 
     // Try both SMC values; the one that's not a sentinel is the right one.
@@ -273,11 +290,20 @@ fn time_remain_from(io: &IORegistry, smc: &SMCPowerData) -> Duration {
             && smc_min < MAX_PLAUSIBLE_MIN as f32
             && (smc_min as i32) != IOKIT_SENTINEL
         {
-            return Duration::from_secs_f32(60.0 * smc_min);
+            return Some(Duration::from_secs_f32(60.0 * smc_min));
         }
     }
 
-    Duration::ZERO
+    None
+}
+
+fn normalized_update_time(value: i64) -> i64 {
+    if value > 0 {
+        return value;
+    }
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs() as i64)
 }
 
 pub fn get_mac_ioreg_dict() -> anyhow::Result<CFDictionary> {
@@ -309,7 +335,7 @@ pub fn get_mac_ioreg_dict() -> anyhow::Result<CFDictionary> {
 
 pub fn get_mac_ioreg() -> anyhow::Result<IORegistry> {
     let dic = get_mac_ioreg_dict()?;
-    unsafe { mem::transmute(dict_into::<repr::IORegistry>(dic)) }
+    Ok(dict_into::<repr::IORegistry>(dic)?.into())
 }
 
 /// Compute the absolute battery level as a percentage (0-100).
@@ -325,6 +351,50 @@ fn absolute_battery_level(io: &IORegistry) -> f32 {
         io.current_capacity as f32 / io.max_capacity as f32 * 100.
     } else {
         io.current_capacity as f32
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_iokit_remaining_time_sentinels() {
+        assert_eq!(time_remain_iokit(-1), None);
+        assert_eq!(time_remain_iokit(65_535), None);
+        assert_eq!(time_remain_iokit(24 * 60 + 1), None);
+        assert_eq!(time_remain_iokit(90), Some(Duration::from_secs(5_400)));
+    }
+
+    #[test]
+    fn amperage_overrides_stale_smc_charging_flag() {
+        let io = IORegistry {
+            instant_amperage: -250,
+            is_charging: true,
+            ..Default::default()
+        };
+        let smc = SMCPowerData {
+            charging_status: 1.0,
+            ..Default::default()
+        };
+        assert!(!is_charging_local(&io, &smc));
+    }
+
+    #[test]
+    fn missing_update_time_uses_current_epoch() {
+        let resource = NormalizedResource::from(&IORegistry::default());
+        assert!(resource.last_update > 0);
+        assert!(!resource.time_remain_known);
+    }
+
+    #[test]
+    fn capacity_percentage_is_used_when_raw_capacity_is_missing() {
+        let io = IORegistry {
+            current_capacity: 75,
+            max_capacity: 100,
+            ..Default::default()
+        };
+        assert_eq!(absolute_battery_level(&io), 75.0);
     }
 }
 

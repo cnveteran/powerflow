@@ -1,6 +1,7 @@
 import type { InterfaceType, NormalizedResource } from '@/bindings'
 import type { Reactive } from 'vue'
 import { events } from '@/bindings'
+import { selectDeviceValue } from '@/lib/power'
 
 import { computed, reactive } from 'vue'
 import { useTab } from './useTab'
@@ -89,6 +90,9 @@ const power = reactive<PowerData>({
   remote: {},
 })
 
+const tab = useTab()
+const removalTimers = new Map<string, number>()
+
 function getOrCreateDeviceData(udid: string): RemotePowerData {
   if (!power.remote[udid]) {
     power.remote[udid] = {
@@ -106,6 +110,11 @@ events.deviceEvent.listen(({ payload }) => {
   const deviceData = getOrCreateDeviceData(payload.udid)
 
   if (payload.action === 'Attached') {
+    const timer = removalTimers.get(payload.udid)
+    if (timer !== undefined) {
+      window.clearTimeout(timer)
+      removalTimers.delete(payload.udid)
+    }
     deviceData.interface.add(payload.interface)
     deviceData.offline = false
   }
@@ -114,20 +123,30 @@ events.deviceEvent.listen(({ payload }) => {
   }
   if (deviceData.interface.size === 0) {
     deviceData.offline = true
+    const existingTimer = removalTimers.get(payload.udid)
+    if (existingTimer !== undefined)
+      window.clearTimeout(existingTimer)
+    const timer = window.setTimeout(() => {
+      if (power.remote[payload.udid]?.offline) {
+        delete power.remote[payload.udid]
+        if (tab.value === payload.udid)
+          tab.value = 'local'
+      }
+      removalTimers.delete(payload.udid)
+    }, 30_000)
+    removalTimers.set(payload.udid, timer)
   }
 })
-
-const tab = useTab()
 
 const emptyPower = {} as NormalizedResource
 
 const currentPower = computed<RawPowerData>(() => {
-  if (tab.value === 'local')
-    return power.local
-  return power.remote[tab.value] ?? {
-    data: emptyPower,
-    statistics: [],
-  }
+  return selectDeviceValue<RawPowerData>(
+    power.local,
+    power.remote,
+    tab.value,
+    { data: emptyPower, statistics: [] },
+  )
 })
 
 export function usePower() {
@@ -154,9 +173,21 @@ export function usePowerRaw() {
     RemotePowerData & { isLocal: false }
   >(() => {
     const isLocal = tab.value === 'local'
+    if (isLocal) {
+      return {
+        ...power.local,
+        isLocal: true as const,
+      }
+    }
     return {
-      ...isLocal ? currentPower.value : power.remote[tab.value],
-      isLocal,
-    } as any
+      ...(power.remote[tab.value] ?? {
+        data: emptyPower,
+        statistics: [],
+        name: tab.value,
+        offline: true,
+        interface: new Set<InterfaceType>(),
+      }),
+      isLocal: false as const,
+    }
   })
 }

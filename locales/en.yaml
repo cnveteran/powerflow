@@ -10,7 +10,40 @@ cycle_count: Cycle Count
 cycle_count_desc: Total number of cycles
 energy: Energy
 designed_capacity: Designed Capacity
+max_capacity: Max Capacity
 times: times
+app_name: Mac Power Assistant
+
+navigation:
+  history: History
+  settings: Settings
+  local: Local
+  offline: Offline
+
+popover:
+  open_app: Open Mac Power Assistant
+
+history:
+  title: Charging History
+  empty: No charging sessions yet
+  empty_desc: Charge a device to record your first session.
+  select: Select a charging session to view details.
+  unknown_device: Unknown device
+  with_adapter: with {adapter}
+  duration: Duration
+  average_power: Average Power
+  peak: Peak
+  charging_rate: Charging Rate
+  average_temperature: Average Temperature
+  charging_curve: Charging Curve
+  additional_detail: Additional Details
+  temperature_peak: Peak Temperature
+  adapter_power_peak: Peak Adapter Power
+  adapter_watts: Adapter Rating
+  export: Export Data
+  delete: Delete
+  export_success: Charging data exported
+  delete_success: Charging session deleted
 
 status:
   on_battery: On Battery
@@ -20,6 +53,7 @@ status:
   to_full: to full
   to_empty: to empty
   fully_charged: Fully Charged
+  calculating: Calculating…
   battery_in: Battery In
   power_loss: Power Loss
   screen_power: Screen
@@ -67,10 +101,11 @@ settings:
   build: Build
   license: License
   author: Author
+  view_github: View on GitHub
 
 time:
   minute: minute|minute|minutes
-  hour: minute|hour|hours
+  hour: hour|hour|hours
 
 time_ago_options:
   day_future: in 0 days|tomorrow|in {n} days

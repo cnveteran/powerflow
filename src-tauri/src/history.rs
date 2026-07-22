@@ -17,8 +17,8 @@ use crate::{
     local::PowerTickEvent,
 };
 
-/// Cap overnight charges (~2s interval → ~2h of samples) to bound RAM / BLOB size.
-const MAX_STAGED_SAMPLES: usize = 3600;
+/// Keep up to 24 hours at the default 2-second interval before compacting.
+const MAX_STAGED_SAMPLES: usize = 43_200;
 
 struct ChargingHistoryStage {
     data: NormalizedResource,
@@ -70,6 +70,14 @@ fn summrize_history(
     }
     .unwrap_or_default();
 
+    summarize_stages(staged, typ, name)
+}
+
+fn summarize_stages(
+    staged: Vec<ChargingHistoryStage>,
+    typ: DeviceType,
+    name: String,
+) -> Option<ChargingHistory> {
     let (first, last) = (staged.first()?, staged.last()?);
 
     let from_level = first.data.battery_level;
@@ -114,13 +122,33 @@ fn summrize_history(
     })
 }
 
+fn compact_stages(staged: &mut Vec<ChargingHistoryStage>) {
+    if staged.len() < 3 {
+        return;
+    }
+
+    // Preserve the true session start/end and decimate only interior samples.
+    let last_index = staged.len() - 1;
+    let mut compacted = Vec::with_capacity(staged.len() / 2 + 2);
+    compacted.push(ChargingHistoryStage {
+        data: staged[0].data.clone(),
+        raw: staged[0].raw.clone(),
+    });
+    for (index, sample) in staged.drain(1..last_index).enumerate() {
+        if index % 2 == 0 {
+            compacted.push(sample);
+        }
+    }
+    if let Some(last) = staged.pop() {
+        compacted.push(last);
+    }
+    *staged = compacted;
+}
+
 fn push_stage(staged: &mut Vec<ChargingHistoryStage>, data: NormalizedResource) {
     if staged.len() >= MAX_STAGED_SAMPLES {
-        let drop_n = staged.len() / 4;
-        staged.drain(0..drop_n);
-        log::warn!(
-            "charging history staging buffer capped; dropped {drop_n} oldest samples"
-        );
+        compact_stages(staged);
+        log::warn!("charging history exceeded 24 hours; compacted interior samples");
     }
     let raw = match serde_json::to_string(&data) {
         Ok(s) => s,
@@ -134,15 +162,32 @@ fn push_stage(staged: &mut Vec<ChargingHistoryStage>, data: NormalizedResource) 
 
 fn spawn_history_recorder(
     app: AppHandle,
-    mut rx: mpsc::Receiver<(DeviceType, NormalizedResource)>,
+    mut rx: mpsc::UnboundedReceiver<(DeviceType, NormalizedResource)>,
 ) {
     async_runtime::spawn(async move {
         let db = app.state::<SqlitePool>();
         let mut staged: HashMap<DeviceType, Vec<ChargingHistoryStage>> = HashMap::new();
 
-        while let Some((typ, data)) = rx.recv().await {
+        while let Some((typ, mut data)) = rx.recv().await {
             let full_charged = data.battery_level >= 100;
             let staged = staged.entry(typ.clone()).or_default();
+
+            if let Some(last) = staged
+                .last()
+                .filter(|last| data.last_update < last.data.last_update)
+            {
+                log::warn!(
+                    "Received out-of-order charging sample: {} < {}",
+                    data.last_update,
+                    last.data.last_update
+                );
+                if data.is_charging && !full_charged {
+                    continue;
+                }
+                // Preserve terminal transitions (full charge/unplug) even if
+                // the system clock moved backwards.
+                data.last_update = last.data.last_update;
+            }
 
             let was_charging = staged
                 .last()
@@ -205,29 +250,68 @@ fn spawn_history_recorder(
 }
 
 pub fn setup_history_recorder(app: AppHandle) {
-    let (tx, rx) = mpsc::channel(10);
+    let (tx, rx) = mpsc::unbounded_channel();
     let tx_cloned = tx.clone();
     PowerTickEvent::listen(&app, move |TypedEvent { payload, .. }| {
-        let tx = tx_cloned.clone();
-        async_runtime::spawn(async move {
-            tx.send((DeviceType::Local, payload.data))
-                .await
-                .unwrap_or_else(|err| {
-                    log::error!("Failed to send PowerTickEvent: {:#?}", err);
-                })
-        });
+        if let Err(err) = tx_cloned.send((DeviceType::Local, payload.data)) {
+            log::error!("Failed to send PowerTickEvent: {err}");
+        }
     });
 
-    let tx_cloned = tx.clone();
+    let tx_cloned = tx;
     DevicePowerTickEvent::listen(&app, move |TypedEvent { payload, .. }| {
-        let tx = tx_cloned.clone();
-        async_runtime::spawn(async move {
-            tx.send((DeviceType::Remote(payload.udid), payload.data))
-                .await
-                .unwrap_or_else(|err| {
-                    log::error!("Failed to send DevicePowerTickEvent: {:#?}", err);
-                })
-        });
+        if let Err(err) = tx_cloned.send((DeviceType::Remote(payload.udid), payload.data)) {
+            log::error!("Failed to send DevicePowerTickEvent: {err}");
+        }
     });
     spawn_history_recorder(app.clone(), rx);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tpower::de::IORegistry;
+
+    fn sample(level: i32, timestamp: i64) -> NormalizedResource {
+        NormalizedResource::local_from_ioreg(&IORegistry {
+            current_capacity: level,
+            max_capacity: 100,
+            update_time: timestamp,
+            is_charging: true,
+            instant_amperage: 100,
+            ..Default::default()
+        })
+    }
+
+    fn stage(level: i32, timestamp: i64) -> ChargingHistoryStage {
+        ChargingHistoryStage {
+            raw: "{}".to_string(),
+            data: sample(level, timestamp),
+        }
+    }
+
+    #[test]
+    fn compaction_preserves_session_boundaries() {
+        let mut staged = (0..8)
+            .map(|index| stage(20 + index, 100 + i64::from(index)))
+            .collect::<Vec<_>>();
+
+        compact_stages(&mut staged);
+
+        assert_eq!(staged.first().unwrap().data.last_update, 100);
+        assert_eq!(staged.last().unwrap().data.last_update, 107);
+        assert!(staged
+            .windows(2)
+            .all(|window| window[0].data.last_update < window[1].data.last_update));
+    }
+
+    #[test]
+    fn summary_includes_full_charge_and_handles_clock_rollback() {
+        let staged = vec![stage(40, 200), stage(100, 190)];
+        let history = summarize_stages(staged, DeviceType::Local, String::new()).unwrap();
+
+        assert_eq!(history.from_level, 40);
+        assert_eq!(history.end_level, 100);
+        assert_eq!(history.duration, 0);
+    }
 }

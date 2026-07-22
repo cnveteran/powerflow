@@ -13,7 +13,7 @@ const formatedUpdatetime = useTimeAgo(timestamp * 1000 + chargingTime * 1000, ti
 </script>
 
 <template>
-  <div class="flex items-center justify-between rounded-xl border px-4 py-2">
+  <button type="button" class="flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left">
     <div class="flex items-center">
       <div class="py-2 h-min">
         <MobileIcon v-if="isRemote" class="size-5" />
@@ -34,15 +34,14 @@ const formatedUpdatetime = useTimeAgo(timestamp * 1000 + chargingTime * 1000, ti
         </span>
 
         <span class="text-muted-foreground font-mono text-xs truncate">{{ formatedUpdatetime }}</span>
+        <span class="max-w-48 truncate text-xs text-muted-foreground">{{ name }}</span>
       </div>
     </div>
-
-    <div class="w-24" />
 
     <div class="flex items-center gap-4">
       <div class="p-2">
         <ChevronRight class="size-4" />
       </div>
     </div>
-  </div>
+  </button>
 </template>

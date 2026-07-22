@@ -5,14 +5,14 @@ import { useI18n } from 'vue-i18n'
 const power = usePower()
 const { t } = useI18n()
 
-const colors = [
-  'bg-blue-500',
-  'bg-blue-600',
-  'bg-blue-700',
-  'bg-blue-800',
-  'bg-blue-900',
-  'bg-blue-950',
-]
+const colors: Record<string, string> = {
+  screen: 'bg-power-screen',
+  heatpipe: 'bg-power-thermal',
+  systemOther: 'bg-power-system',
+  batteryIn: 'bg-power-battery',
+  systemTotal: 'bg-power-system',
+  powerLoss: 'bg-power-loss',
+}
 
 const localeMap = computed(() => ({
   screen: t('status.screen_power'),
@@ -67,11 +67,11 @@ const handle = watchEffect(() => {
   const safeSum = Number.isFinite(sum) && sum > 0 ? sum : 1
   data.value = {
     parts: sorted
-      .map(([key, left], index) =>
+      .map(([key, left]) =>
         [key, {
           value: parts[key],
           left: left / safeSum,
-          color: colors[index % colors.length],
+          color: colors[key] || 'bg-power-system',
           locale: localeMap.value[key as keyof UnwrapRef<typeof localeMap>],
         }],
       ),
@@ -91,8 +91,7 @@ watchEffect(() => {
   <!-- Not Charging: total = screen + heatpipe + system other -->
   <div
     v-if="data"
-    class="relative h-3 overflow-hidden rounded flex transition-all duration-500"
-    :class="[hovered ? '' : 'bg-blue-500']"
+    class="relative flex h-3 overflow-hidden rounded bg-muted transition-all duration-300"
     @mouseleave="hovered = null"
   >
     <CommonTooltip
@@ -102,13 +101,17 @@ watchEffect(() => {
     >
       <template #popper>
         <span>{{ locale }}</span>
-        <span class="ml-1 font-mono font-extrabold">{{ value.toFixed(1) }}w</span>
+        <span class="ml-1 font-mono font-extrabold">{{ value.toFixed(1) }} W</span>
       </template>
-      <div
-        class="absolute top-0 bottom-0 transition-all duration-500"
+      <button
+        type="button"
+        class="absolute bottom-0 top-0 transition-all duration-300 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring"
         :class="[hovered && hovered !== key ? 'opacity-20' : 'opacity-100', color]"
         :style="{ width: `calc(${(value / data.sum) * 100}% + 1px)`, left: `${left * 100}%` }"
+        :aria-label="`${locale}: ${value.toFixed(1)} W`"
         @mouseover="hovered = key"
+        @focus="hovered = key"
+        @blur="hovered = null"
       />
     </CommonTooltip>
   </div>

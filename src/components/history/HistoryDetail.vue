@@ -5,7 +5,6 @@ import CustomChartTooltip from '@/components/chart/CustomChartTooltip.vue'
 import { useHistory } from '@/composables/useHistory'
 import { shortEnDistanceLocale } from '@/lib/format'
 import { save } from '@tauri-apps/plugin-dialog'
-import { create } from '@tauri-apps/plugin-fs'
 import { error as logerror } from '@tauri-apps/plugin-log'
 import { format, formatDuration, intervalToDuration } from 'date-fns'
 import { Download, EllipsisVertical, Loader2, Trash2 } from 'lucide-vue-next'
@@ -15,6 +14,7 @@ const { selectedItem, history } = useHistory()
 
 const isLoading = ref(true)
 const error = ref()
+const actionMessage = ref('')
 const data = asyncComputed(
   () => commands.getDetailById(props.id)
     .then((r) => {
@@ -41,9 +41,13 @@ async function exportData() {
   })
 
   if (path) {
-    const file = await create(path)
-    await file.write(new TextEncoder().encode(JSON.stringify(data.value)))
-    await file.close()
+    const result = await commands.exportHistoryById(props.id, path)
+    if (result.status === 'error') {
+      error.value = result.error
+      await logerror(result.error)
+      return
+    }
+    actionMessage.value = 'exported'
   }
 }
 </script>
@@ -60,15 +64,15 @@ async function exportData() {
       <div class="flex justify-between items-center">
         <div>
           <h1 class="text-2xl font-bold">
-            {{ name || 'Unknown' }}
+            {{ name || $t('history.unknown_device') }}
           </h1>
           <h2 class="text-sm font-bold mt-1 text-muted-foreground">
-            with {{ adapterName }}
+            {{ $t('history.with_adapter', { adapter: adapterName || '—' }) }}
           </h2>
         </div>
         <div>
           <DropdownMenu>
-            <DropdownMenuTrigger class="p-2 rounded-md hover:bg-muted transition-colors">
+            <DropdownMenuTrigger class="p-2 rounded-md hover:bg-muted transition-colors" :aria-label="$t('history.title')">
               <EllipsisVertical class="w-4 h-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -79,7 +83,7 @@ async function exportData() {
                 @click="exportData"
               >
                 <Download class="w-4 h-4" />
-                Export Data
+                {{ $t('history.export') }}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -92,19 +96,23 @@ async function exportData() {
                   }
                   selectedItem = null
                   history.update()
+                  actionMessage = 'deleted'
                 }"
               >
                 <Trash2 />
-                Delete
+                {{ $t('history.delete') }}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
+      <p class="sr-only" aria-live="polite">
+        {{ actionMessage === 'exported' ? $t('history.export_success') : actionMessage === 'deleted' ? $t('history.delete_success') : '' }}
+      </p>
       <div class="mt-4 grid gap-4 grid-cols-3">
         <div class="space-y-2">
           <div class="text-sm font-medium text-muted-foreground">
-            Duration
+            {{ $t('history.duration') }}
           </div>
           <div class="text-2xl font-bold">
             {{ formatDuration(
@@ -122,18 +130,18 @@ async function exportData() {
         </div>
         <div class="space-y-2">
           <div class="text-sm font-medium text-muted-foreground">
-            Avg Power
+            {{ $t('history.average_power') }}
           </div>
           <div class="text-2xl font-bold">
             {{ data.avg.adapterPower.toFixed(1) }}W
           </div>
           <div class="text-xs text-muted-foreground">
-            Peak: {{ data.peak.adapterPower.toFixed(1) }}W
+            {{ $t('history.peak') }}: {{ data.peak.adapterPower.toFixed(1) }} W
           </div>
         </div>
         <div class="space-y-2">
           <div class="text-sm font-medium text-muted-foreground">
-            Charging rate
+            {{ $t('history.charging_rate') }}
           </div>
           <div class="text-2xl font-bold">
             {{
@@ -143,13 +151,13 @@ async function exportData() {
             }}
           </div>
           <div class="text-xs text-muted-foreground">
-            Avg Temp: {{ data.avg.temperature.toFixed(1) }}°C
+            {{ $t('history.average_temperature') }}: {{ data.avg.temperature.toFixed(1) }}°C
           </div>
         </div>
       </div>
 
       <h2 class="mt-8 font-bold">
-        Charging Curve
+        {{ $t('history.charging_curve') }}
       </h2>
       <LineChart
         class="mt-8 max-h-[220px]"
@@ -161,25 +169,25 @@ async function exportData() {
       />
 
       <h2 class="mt-8 font-bold">
-        Additional Detail
+        {{ $t('history.additional_detail') }}
       </h2>
       <div class="mt-2 grid gap-4 text-sm">
         <div class="grid grid-cols-2 gap-4">
           <div>
             <div class="text-muted-foreground">
-              Temperature Peak
+              {{ $t('history.temperature_peak') }}
             </div>
             <div>{{ data.peak.temperature.toFixed(1) }}°C</div>
           </div>
           <div>
             <div class="text-muted-foreground">
-              Adapter Power Peak
+              {{ $t('history.adapter_power_peak') }}
             </div>
             <div>{{ data.peak.adapterPower.toFixed(1) }}W</div>
           </div>
           <div>
             <div class="text-muted-foreground">
-              Adapter Watts
+              {{ $t('history.adapter_watts') }}
             </div>
             <div>{{ data.peak.adapterWatts }}W({{ data.peak.adapterVoltage }}V, {{ data.peak.adapterAmperage }}A)</div>
           </div>
