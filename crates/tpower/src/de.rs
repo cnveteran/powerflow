@@ -71,9 +71,31 @@ with_repr! {
     #[out, serde(rename_all = "camelCase"), cfg_attr(feature = "specta", derive(specta::Type))]
     #[repr, serde(rename_all(deserialize = "PascalCase", serialize = "camelCase"))]
     #[derive(Debug, Clone, Default, Deserialize, Serialize)]
+    pub struct BatteryData {
+        /// Full charge capacity in mAh (macOS 27+ replaces AppleRawMaxCapacity with this).
+        #[serde(default)]
+        pub full_charge_capacity: i32,
+        /// Remaining capacity in mAh (macOS 27+ replaces AppleRawCurrentCapacity with this).
+        #[serde(default)]
+        pub remaining_capacity: i32,
+        /// Design capacity in mAh (macOS 27+ moved DesignCapacity into this nested dict).
+        #[serde(default)]
+        pub design_capacity: i32,
+        /// Nominal charge capacity in mAh.
+        #[serde(default)]
+        pub nominal_charge_capacity: i32,
+    }
+
+    #[out, serde(rename_all = "camelCase"), cfg_attr(feature = "specta", derive(specta::Type))]
+    #[repr, serde(rename_all(deserialize = "PascalCase", serialize = "camelCase"))]
+    #[derive(Debug, Clone, Default, Deserialize, Serialize)]
     pub struct IORegistry {
         pub adapter_details: AdapterDetails,
         pub power_telemetry_data: Option<PowerTelemetryData>,
+        // macOS 27+ moved capacity data (FullChargeCapacity, RemainingCapacity,
+        // DesignCapacity in mAh) into this nested dict.
+        #[serde(default)]
+        pub battery_data: Option<BatteryData>,
         // macOS 27+ no longer exposes AbsoluteCapacity at the top level of
         // AppleSmartBattery (it moved into the nested BatteryData dict).
         #[serde(default)]
@@ -83,7 +105,7 @@ with_repr! {
         pub apple_raw_battery_voltage: Option<i32>,
         // macOS 27+ no longer exposes AppleRawCurrentCapacity /
         // AppleRawMaxCapacity via AppleSmartBattery. Default to 0 and let
-        // callers fall back to CurrentCapacity / MaxCapacity (percent 0-100).
+        // callers fall back to BatteryData or CurrentCapacity / MaxCapacity.
         #[serde(default)]
         pub apple_raw_current_capacity: i32,
         #[serde(default)]
@@ -133,6 +155,17 @@ impl From<repr::AdapterDetails> for AdapterDetails {
     }
 }
 
+impl From<repr::BatteryData> for BatteryData {
+    fn from(value: repr::BatteryData) -> Self {
+        Self {
+            full_charge_capacity: value.full_charge_capacity,
+            remaining_capacity: value.remaining_capacity,
+            design_capacity: value.design_capacity,
+            nominal_charge_capacity: value.nominal_charge_capacity,
+        }
+    }
+}
+
 impl From<repr::PowerTelemetryData> for PowerTelemetryData {
     fn from(value: repr::PowerTelemetryData) -> Self {
         Self {
@@ -152,6 +185,7 @@ impl From<repr::IORegistry> for IORegistry {
         Self {
             adapter_details: value.adapter_details.into(),
             power_telemetry_data: value.power_telemetry_data.map(Into::into),
+            battery_data: value.battery_data.map(Into::into),
             absolute_capacity: value.absolute_capacity,
             amperage: value.amperage,
             voltage: value.voltage,

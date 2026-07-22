@@ -130,6 +130,28 @@ impl NormalizedResource {
     }
 }
 
+/// Resolve the real capacity values (in mAh) for battery health display.
+///
+/// On macOS 27+, `AppleRawMaxCapacity` / `AppleRawCurrentCapacity` /
+/// `DesignCapacity` are no longer exposed at the top level of
+/// `AppleSmartBattery`; the real mAh values moved into the nested
+/// `BatteryData` dict (`FullChargeCapacity`, `RemainingCapacity`,
+/// `DesignCapacity`). We prioritize the nested dict and fall back to the
+/// top-level keys for older macOS versions.
+///
+/// Returns `(max_capacity, current_capacity, design_capacity)` in mAh.
+fn real_capacity_from(io: &IORegistry) -> (i32, i32, i32) {
+    let bd = io.battery_data.as_ref();
+    (
+        bd.and_then(|b| (b.full_charge_capacity > 0).then_some(b.full_charge_capacity))
+            .unwrap_or(io.apple_raw_max_capacity),
+        bd.and_then(|b| (b.remaining_capacity > 0).then_some(b.remaining_capacity))
+            .unwrap_or(io.apple_raw_current_capacity),
+        bd.and_then(|b| (b.design_capacity > 0).then_some(b.design_capacity))
+            .unwrap_or(io.design_capacity),
+    )
+}
+
 impl From<&IORegistry> for NormalizedResource {
     fn from(io: &IORegistry) -> Self {
         let (system_in, system_load, battery_power, adapter_power, efficiency_loss) =
@@ -146,6 +168,7 @@ impl From<&IORegistry> for NormalizedResource {
             };
 
         let time_remain = time_remain_iokit(io.time_remaining);
+        let (max_cap, cur_cap, design_cap) = real_capacity_from(io);
 
         Self {
             is_local: false,
@@ -161,9 +184,9 @@ impl From<&IORegistry> for NormalizedResource {
                 .clone()
                 .or_else(|| io.adapter_details.description.clone()),
             cycle_count: io.cycle_count,
-            max_capacity: io.apple_raw_max_capacity,
-            design_capacity: io.design_capacity,
-            current_capacity: io.apple_raw_current_capacity,
+            max_capacity: max_cap,
+            design_capacity: design_cap,
+            current_capacity: cur_cap,
             data: NormalizedData {
                 system_in,
                 system_load,
@@ -188,6 +211,7 @@ impl From<&IORegistry> for NormalizedResource {
 impl From<(&IORegistry, &SMCPowerData)> for NormalizedResource {
     fn from((io, smc): (&IORegistry, &SMCPowerData)) -> Self {
         let time_remain = time_remain_from(io, smc);
+        let (max_cap, cur_cap, design_cap) = real_capacity_from(io);
 
         Self {
             is_local: true,
@@ -207,9 +231,9 @@ impl From<(&IORegistry, &SMCPowerData)> for NormalizedResource {
                 .clone()
                 .or_else(|| io.adapter_details.description.clone()),
             cycle_count: io.cycle_count,
-            max_capacity: io.apple_raw_max_capacity,
-            design_capacity: io.design_capacity,
-            current_capacity: io.apple_raw_current_capacity,
+            max_capacity: max_cap,
+            design_capacity: design_cap,
+            current_capacity: cur_cap,
             data: NormalizedData {
                 system_in: smc.delivery_rate,
                 system_load: smc.system_total,
@@ -395,6 +419,45 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(absolute_battery_level(&io), 75.0);
+    }
+
+    #[test]
+    fn real_capacity_from_nested_battery_data_on_macos_27() {
+        // macOS 27: top-level AppleRaw* keys are gone, but BatteryData dict
+        // carries the real mAh values.
+        let io = IORegistry {
+            battery_data: Some(crate::de::BatteryData {
+                full_charge_capacity: 6389,
+                remaining_capacity: 6389,
+                design_capacity: 6249,
+                ..Default::default()
+            }),
+            // top-level raw capacity keys are 0 (missing on macOS 27)
+            ..Default::default()
+        };
+        let (max_cap, cur_cap, design_cap) = real_capacity_from(&io);
+        assert_eq!(max_cap, 6389);
+        assert_eq!(cur_cap, 6389);
+        assert_eq!(design_cap, 6249);
+
+        // Battery health = 6389 / 6249 * 100 ≈ 102.2%, capped to 100%
+        let health = (max_cap as f32 / design_cap as f32 * 100.0).min(100.0);
+        assert_eq!(health, 100.0);
+    }
+
+    #[test]
+    fn real_capacity_falls_back_to_top_level_on_older_macos() {
+        // Older macOS: BatteryData dict is absent, top-level AppleRaw* keys work.
+        let io = IORegistry {
+            apple_raw_max_capacity: 6400,
+            apple_raw_current_capacity: 6300,
+            design_capacity: 6250,
+            ..Default::default()
+        };
+        let (max_cap, cur_cap, design_cap) = real_capacity_from(&io);
+        assert_eq!(max_cap, 6400);
+        assert_eq!(cur_cap, 6300);
+        assert_eq!(design_cap, 6250);
     }
 }
 
