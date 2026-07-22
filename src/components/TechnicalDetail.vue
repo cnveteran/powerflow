@@ -34,7 +34,7 @@ const power = usePower()
         <div v-if="!power.isLoading" class="text-2xl font-bold">
           {{
             (power.designCapacity ?? 0) > 0
-              ? `${(power.maxCapacity / power.designCapacity! * 100).toFixed(1)}%`
+              ? `${Math.min(power.maxCapacity / power.designCapacity! * 100, 100).toFixed(1)}%`
               : '—'
           }}
         </div>
