@@ -13,16 +13,13 @@ designed_capacity: 设计容量
 max_capacity: 最大容量
 times: 次
 app_name: Mac电源助手
-
 navigation:
   history: 充电历史
   settings: 设置
   local: 本机
   offline: 离线
-
 popover:
   open_app: 打开 Mac电源助手
-
 history:
   title: 充电历史
   empty: 暂无充电记录
@@ -40,6 +37,10 @@ history:
   temperature_peak: 最高温度
   adapter_power_peak: 适配器峰值功率
   adapter_watts: 适配器额定功率
+  curve_system_in: 系统输入
+  curve_battery_power: 电池功率
+  curve_system_load: 系统功耗
+  curve_battery_level: 电量
   export: 导出数据
   delete: 删除
   export_success: 充电数据已导出
@@ -52,7 +53,6 @@ status:
   to_full: 充满
   to_empty: 耗尽
   fully_charged: 已充满
-  calculating: 计算中…
   battery_in: 电池输入
   power_loss: 损耗
   screen_power: 屏幕

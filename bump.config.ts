@@ -8,6 +8,6 @@ export default defineConfig({
     'crates/tpower/Cargo.toml',
   ],
   execute: 'cargo update mac-power-assistant tpower',
-  sign: true,
+  sign: false,
   push: false,
 })

@@ -14,8 +14,8 @@
     "windows": [
       {
         "title": "Mac电源助手",
-        "width": 1000,
-        "height": 600,
+        "width": 900,
+        "height": 640,
         "titleBarStyle": "Overlay"
       },
       {

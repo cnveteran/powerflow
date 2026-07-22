@@ -16,19 +16,17 @@ const {
 <template>
   <div
     data-tauri-drag-region
-    class="sticky top-0 z-10 flex h-[52px] items-center justify-between border-b border-transparent bg-background/95 px-4 pt-1 backdrop-blur transition-colors"
-    :class="{ 'border-border': shouldDisplayShadow }"
+    class="sticky top-0 flex justify-between items-center z-10 pt-2 pr-4 transition-shadow bg-background"
+    :class="{ shadow: shouldDisplayShadow }"
   >
-    <div class="ml-[4.75rem] flex min-w-0 items-center gap-2">
-      <button
+    <div class="ml-[6rem] flex items-center gap-2">
+      <div
         v-if="$route.path !== '/'"
-        type="button"
-        class="rounded-md p-1 transition-colors hover:bg-muted"
-        :aria-label="$t('navigation.local')"
+        class="p-1 rounded-md transition-colors hover:bg-muted cursor-pointer"
         @click="$router.back()"
       >
         <ChevronLeft class="size-6 text-muted-foreground -translate-x-px" />
-      </button>
+      </div>
       <div v-else class="flex items-center gap-3 font-mono text-sm">
         <TabsList>
           <TransitionGroup
@@ -36,15 +34,10 @@ const {
             leave-to-class="w-0"
             enter-to-class="w-[40px]"
             leave-from-class="w-[40px]"
-            enter-active-class="duration-200"
-            leave-active-class="duration-200"
+            enter-active-class="duration-500"
+            leave-active-class="duration-500"
           >
-            <TabsTrigger
-              key="local"
-              class="px-0"
-              value="local"
-              :aria-label="$t('navigation.local')"
-            >
+            <TabsTrigger key="local" class="px-0" value="local">
               <LaptopIcon class="mx-3 size-4" :class="[tab === 'local' ? 'text-blue-500' : 'text-muted-foreground']" />
             </TabsTrigger>
 
@@ -53,7 +46,6 @@ const {
               :key="udid"
               class="px-0"
               :value="udid"
-              :aria-label="data.remote[udid]?.name || udid"
             >
               <MobileIcon class="mx-3 size-4" :class="[tab === udid ? 'text-blue-500' : 'text-muted-foreground']" />
             </TabsTrigger>
@@ -61,34 +53,28 @@ const {
         </TabsList>
         <div class="flex flex-col -translate-y-[1px]">
           <Skeleton v-if="tabNameLoading" class="w-32 h-4" />
-          <span v-else class="truncate font-semibold text-secondary-foreground">{{ tabName }}</span>
+          <span v-else class="text-secondary-foreground font-bold">{{ tabName }}</span>
           <span class="text-[10px] leading-[10px] font-normal text-muted-foreground">
-            {{ tab === 'local'
-              ? $t('navigation.local')
-              : Array.from(data.remote[tab]?.interface || []).join(' + ') || $t('navigation.offline') }}
+            {{ tab === 'local' ? $t('navigation.local') : Array.from(data.remote[tab].interface || []).join(' / ') || $t('navigation.offline') }}
           </span>
         </div>
       </div>
     </div>
-    <div class="flex gap-1">
-      <button
-        type="button"
-        class="rounded-md p-2 transition-colors hover:bg-muted"
-        :aria-label="$t('navigation.history')"
-        @click="$route.path.startsWith('/history') ? $router.push('/') : $router.push('/history')"
+    <div class="flex gap-2">
+      <div
+        class="rounded-md p-2 hover:bg-muted transition-colors cursor-pointer"
+        @click="$route.path === '/history' ? $router.back() : $router.push('/history')"
       >
         <CommonTooltip :content="$t('navigation.history')" as-child>
           <History
             :stroke-width="1.8"
-            class="size-5 text-muted-foreground transition-colors"
-            :class="{ 'text-foreground': $route.path.startsWith('/history') }"
+            class="text-muted-foreground size-5 transition-transform duration-300"
+            :class="{ 'text-secondary-foreground rotate-[-360deg]': $route.path === '/history' }"
           />
         </CommonTooltip>
-      </button>
-      <button
-        type="button"
-        class="rounded-md p-2 transition-colors hover:bg-muted"
-        :aria-label="$t('navigation.settings')"
+      </div>
+      <div
+        class="rounded-md p-2 hover:bg-muted transition-colors cursor-pointer"
         @click="commands.openSettings()"
       >
         <CommonTooltip :content="$t('navigation.settings')" as-child>
@@ -97,7 +83,7 @@ const {
             class="text-muted-foreground size-5"
           />
         </CommonTooltip>
-      </button>
+      </div>
     </div>
   </div>
 </template>

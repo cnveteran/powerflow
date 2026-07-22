@@ -32,15 +32,7 @@
     --chart-1: 221 83% 53%;
     --chart-2: 200 98% 39%;
     --chart-3: 170 20% 60%;
-    --power-input: 142 71% 45%;
-    --power-system: 217 91% 60%;
-    --power-battery: 199 89% 48%;
-    --power-screen: 262 83% 58%;
-    --power-thermal: 25 95% 53%;
-    --power-loss: 215 16% 47%;
-    --surface-grouped: 220 14% 96%;
-    --surface-elevated: 0 0% 100%;
-    --radius: 0.625rem;
+    --radius: 0.5rem;
 
     --vis-tooltip-background-color: none !important;
     --vis-tooltip-border-color: none !important;
@@ -73,14 +65,6 @@
     --border: 0 0% 14.9%;
     --input: 0 0% 14.9%;
     --ring: 0 0% 83.1%;
-    --power-input: 142 69% 58%;
-    --power-system: 217 91% 65%;
-    --power-battery: 199 89% 58%;
-    --power-screen: 262 83% 68%;
-    --power-thermal: 25 95% 63%;
-    --power-loss: 215 16% 65%;
-    --surface-grouped: 220 10% 10%;
-    --surface-elevated: 220 10% 13%;
 
   }
 }
@@ -95,27 +79,5 @@
     font-family: 'SF Compact', 'SF Pro Icons', 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
     -webkit-font-smoothing: antialiased;
     overflow: hidden;
-  }
-
-  button,
-  [role='button'],
-  a {
-    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
-  }
-
-  .metric-number {
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.025em;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
   }
 }

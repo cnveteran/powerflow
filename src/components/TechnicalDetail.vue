@@ -5,7 +5,7 @@ const power = usePower()
 </script>
 
 <template>
-  <section class="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+  <div class="flex-1 grid gap-4 grid-cols-4">
     <Card>
       <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle class="text-sm font-medium">
@@ -14,7 +14,7 @@ const power = usePower()
         <Thermometer class="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div v-if="!power.isLoading" class="metric-number text-2xl font-semibold">
+        <div v-if="!power.isLoading" class="text-2xl font-bold">
           {{ power.temperature.toFixed(1) }}°C
         </div>
         <Skeleton v-else class="w-12 h-8" />
@@ -31,7 +31,7 @@ const power = usePower()
         <Battery class="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div v-if="!power.isLoading" class="metric-number text-2xl font-semibold">
+        <div v-if="!power.isLoading" class="text-2xl font-bold">
           {{
             (power.designCapacity ?? 0) > 0
               ? `${Math.min(power.maxCapacity / power.designCapacity! * 100, 100).toFixed(1)}%`
@@ -52,7 +52,7 @@ const power = usePower()
         <Cpu class="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div v-if="!power.isLoading" class="metric-number text-2xl font-semibold">
+        <div v-if="!power.isLoading" class="text-2xl font-bold">
           {{ power.cycleCount }} {{ $t('times') }}
         </div>
         <Skeleton v-else class="w-12 h-8" />
@@ -69,7 +69,7 @@ const power = usePower()
         <CloudLightning class="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div v-if="!power.isLoading" class="metric-number text-2xl font-semibold">
+        <div v-if="!power.isLoading" class="text-2xl font-bold">
           {{ power.maxCapacity > 0 ? `${power.currentCapacity}mAh` : '—' }}
         </div>
         <Skeleton v-else class="w-12 h-8" />
@@ -81,5 +81,5 @@ const power = usePower()
         </p>
       </CardContent>
     </Card>
-  </section>
+  </div>
 </template>

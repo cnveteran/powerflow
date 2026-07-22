@@ -10,7 +10,7 @@ export const usePreference = defineStore('preference', () => {
   const theme = ref<Theme>('system')
   const animationsEnabled = ref(true)
   const updateInterval = ref(1500)
-  const language = ref('en')
+  const language = ref('zh-CN')
   const statusBarItem = ref<StatusBarItem>('system')
   const statusBarShowCharging = ref(true)
 

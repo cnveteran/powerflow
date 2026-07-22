@@ -1,5 +1,4 @@
 import { commands, events } from '@/bindings'
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useI18n } from 'vue-i18n'
 
 const SUPPORTED_LOCALES = ['en', 'zh-CN'] as const
@@ -22,7 +21,7 @@ export function useSetup() {
   const preference = usePreference()
   const preferDark = usePreferredDark()
 
-  i18n.locale.value = resolveLocale(preferedLang.value[0], 'en')
+  i18n.locale.value = resolveLocale(preferedLang.value[0], 'zh-CN')
 
   const applyTheme = async (theme = preference.theme) => {
     document.documentElement.classList.toggle(
@@ -37,16 +36,14 @@ export function useSetup() {
     }
   }
 
-  preference.$tauri.start()
-    .then(() => {
-      applyTheme()
-      i18n.locale.value = resolveLocale(preference.language, i18n.locale.value)
-    })
-    .catch(error => console.error('[preference] failed to load', error))
+  preference.$tauri.start().then(() => {
+    applyTheme()
+    i18n.locale.value = resolveLocale(preference.language, i18n.locale.value)
+  })
 
   watch([preferDark, () => preference.theme], () => applyTheme())
 
-  const unlistenPreference = events.preferenceEvent.listen(({ payload }) => {
+  events.preferenceEvent.listen(({ payload }) => {
     if ('theme' in payload) {
       applyTheme(payload.theme)
     }
@@ -54,11 +51,9 @@ export function useSetup() {
       i18n.locale.value = resolveLocale(payload.language, i18n.locale.value)
     }
   })
-  onScopeDispose(() => unlistenPreference.then(unlisten => unlisten()))
 
   // notify rust to get a instant update
   onMounted(() => {
-    if (getCurrentWindow().label === 'main')
-      events.windowLoadedEvent.emit()
+    events.windowLoadedEvent.emit()
   })
 }

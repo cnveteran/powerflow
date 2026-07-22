@@ -16,9 +16,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { open } from '@tauri-apps/plugin-shell'
-import { BadgeInfo, BatteryCharging, CircleDashed, ExternalLink, Eye, Gauge, Languages, Moon, Palette, RotateCw, Sun, SunMoon, Wallet } from 'lucide-vue-next'
+import { Activity, BadgeInfo, BatteryCharging, CircleDashed, ExternalLink, Eye, Gauge, Languages, Moon, Palette, RotateCw, Sun, SunMoon, Wallet } from 'lucide-vue-next'
+import { storeToRefs } from 'pinia'
 import { h, ref, watch } from 'vue'
 import { version } from '../package.json'
 import { events } from './bindings'
@@ -33,21 +35,20 @@ const loading = ref(true)
 const preference = usePreference()
 
 preference.$tauri.start().then(async () => {
-  const emit = (payload: Parameters<typeof events.preferenceEvent.emit>[0]) =>
-    events.preferenceEvent.emit(payload).catch(error =>
-      console.error('[settings] failed to apply preference', error),
-    )
+  const refs = storeToRefs(preference)
 
-  watch(() => preference.theme, theme => emit({ theme }))
-  watch(() => preference.animationsEnabled, animationsEnabled => emit({ animationsEnabled }))
-  watch(() => preference.updateInterval, updateInterval => emit({ updateInterval }))
-  watch(() => preference.language, language => emit({ language }))
-  watch(() => preference.statusBarItem, statusBarItem => emit({ statusBarItem }))
-  watch(() => preference.statusBarShowCharging, statusBarShowCharging =>
-    emit({ statusBarShowCharging }))
+  for (const key in refs) {
+    // TODO: fix types
+    const ref = refs[key as keyof typeof refs]
+    watch(ref, () => {
+      events.preferenceEvent.emit({
+        [key as keyof typeof refs]: ref.value,
+      } as any)
+    })
+  }
 
   loading.value = false
-}).catch(error => console.error('[settings] failed to load preferences', error))
+})
 
 interface SettingsItemProps {
   name: string
@@ -57,10 +58,10 @@ interface SettingsItemProps {
 
 function SettingsItem(props: SettingsItemProps, { slots }: SetupContext) {
   return (
-    <div class="flex min-h-16 items-center justify-between px-4 py-3">
+    <div class="flex items-center justify-between">
       <div class="flex gap-4">
         { h(props.icon, { class: 'size-5' }) }
-        <div class="flex flex-col gap-1">
+        <div class="flex flex-col gap-2">
           <Label class="font-medium">{props.name}</Label>
           <span class="text-xs text-muted-foreground mr-4">
             {props.description}
@@ -80,7 +81,7 @@ interface SettingsSectionProps {
 function SettingsSection(props: SettingsSectionProps) {
   return (
     <div>
-      <h3 class="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+      <h3 class="flex items-center gap-2 text-xl font-black">
         {/* {h(props.icon, { class: 'h-5 w-5' })} */}
         {props.title}
       </h3>
@@ -91,10 +92,10 @@ function SettingsSection(props: SettingsSectionProps) {
 
 <template>
   <div data-tauri-drag-region class="h-6" />
-  <div class="h-[calc(100dvh-1.5rem)] space-y-4 overflow-y-auto bg-surface-grouped px-6 pb-8 pt-3">
+  <div class="space-y-8 mt-6 px-8 bg-background overflow-y-scroll h-dvh">
     <!-- Appearance Section -->
     <SettingsSection :title="$t('settings.appearance')" :icon="Eye" />
-    <div class="divide-y rounded-xl border bg-surface-elevated">
+    <div class="space-y-6">
       <SettingsItem
         :name="$t('settings.theme')"
         :description="$t('settings.theme_desc')"
@@ -102,7 +103,7 @@ function SettingsSection(props: SettingsSectionProps) {
       >
         <Select v-model="preference.theme">
           <SelectTrigger class="w-[130px]">
-            <SelectValue placeholder="Select a theme" />
+            <SelectValue :placeholder="$t('settings.theme')" />
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
@@ -134,9 +135,9 @@ function SettingsSection(props: SettingsSectionProps) {
         :description="$t('settings.language_desc')"
         :icon="Languages"
       >
-        <Select v-model="preference.language" default-value="en">
+        <Select v-model="preference.language" default-value="zh-CN">
           <SelectTrigger class="w-[120px]">
-            <SelectValue placeholder="Select a language" />
+            <SelectValue :placeholder="$t('settings.language')" />
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
@@ -166,12 +167,14 @@ function SettingsSection(props: SettingsSectionProps) {
       </SettingsItem>
     </div>
 
+    <Separator />
+
     <!-- Updates & Monitoring Section -->
     <SettingsSection
       :title="$t('settings.update_and_monitoring')"
       :icon="RotateCw"
     />
-    <div class="divide-y rounded-xl border bg-surface-elevated">
+    <div class="space-y-6">
       <SettingsItem
         :name="$t('settings.update_frequency')"
         :description="$t('settings.update_frequency_desc')"
@@ -185,7 +188,7 @@ function SettingsSection(props: SettingsSectionProps) {
             unit: 'millisecond',
             unitDisplay: 'short',
           }"
-          locale="en-US"
+          locale="zh-CN"
           :min="500"
           :max="60000"
           :step="500"
@@ -197,6 +200,19 @@ function SettingsSection(props: SettingsSectionProps) {
             <NumberFieldIncrement />
           </NumberFieldContent>
         </NumberField>
+      </SettingsItem>
+
+      <SettingsItem
+        :name="$t('settings.background_monitoring')"
+        :description="$t('settings.background_monitoring_desc')"
+        :icon="Activity"
+      >
+        <Switch
+          id="background-monitoring"
+          class="data-[state=checked]:bg-blue-500"
+          disabled
+          checked
+        />
       </SettingsItem>
 
       <SettingsItem
@@ -259,9 +275,11 @@ function SettingsSection(props: SettingsSectionProps) {
       </div>
     </section> -->
 
+    <Separator />
+
     <!-- About Section -->
     <SettingsSection :title="$t('settings.about')" :icon="Wallet" />
-    <div class="grid grid-cols-2 gap-4 rounded-xl border bg-surface-elevated p-4">
+    <div class="grid grid-cols-2 gap-4">
       <div>
         <div class="text-sm font-medium text-muted-foreground">
           {{ $t('settings.version') }}
@@ -276,14 +294,13 @@ function SettingsSection(props: SettingsSectionProps) {
         </div>
         <div class="text-sm flex items-center">
           {{ commitHash.slice(0, 7) }}
-          <button
-            type="button"
-            class="ml-2 mr-1 flex items-center gap-1 text-xs text-muted-foreground underline"
+          <a
+            class="ml-2 mr-1 text-xs text-muted-foreground underline flex items-center gap-1 cursor-pointer"
             @click="open(`https://github.com/cnveteran/powerflow/commit/${commitHash}`)"
           >
             {{ $t('settings.view_github') }}
             <ExternalLink class="size-3 text-muted-foreground" />
-          </button>
+          </a>
         </div>
       </div>
       <div>

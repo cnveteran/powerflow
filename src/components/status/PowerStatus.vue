@@ -8,8 +8,8 @@ const div = h('div')
 <template>
   <Component
     :is="isPopover ? div : Card"
-    class="min-w-0"
-    :class="{ 'flex-1 bg-transparent border-none': isPopover }"
+    class="min-w-80"
+    :class="{ 'flex-1 bg-transparent border-none shadow-none': isPopover }"
   >
     <CardHeader class="space-y-0 pb-2 gap-y-0">
       <CardTitle class="flex items-center justify-between gap-2 text-base truncate">

@@ -13,37 +13,38 @@ designed_capacity: Designed Capacity
 max_capacity: Max Capacity
 times: times
 app_name: Mac Power Assistant
-
 navigation:
   history: History
   settings: Settings
   local: Local
   offline: Offline
-
 popover:
   open_app: Open Mac Power Assistant
-
 history:
   title: Charging History
-  empty: No charging sessions yet
-  empty_desc: Charge a device to record your first session.
-  select: Select a charging session to view details.
-  unknown_device: Unknown device
+  empty: No records
+  empty_desc: Charge your device and the first charging session will be recorded here.
+  select: Select a charging record to view details.
+  unknown_device: Unknown Device
   with_adapter: with {adapter}
   duration: Duration
   average_power: Average Power
   peak: Peak
   charging_rate: Charging Rate
-  average_temperature: Average Temperature
+  average_temperature: Avg Temperature
   charging_curve: Charging Curve
-  additional_detail: Additional Details
+  additional_detail: More Details
   temperature_peak: Peak Temperature
-  adapter_power_peak: Peak Adapter Power
-  adapter_watts: Adapter Rating
-  export: Export Data
+  adapter_power_peak: Adapter Peak Power
+  adapter_watts: Adapter Rated Power
+  curve_system_in: System In
+  curve_battery_power: Battery Power
+  curve_system_load: System Load
+  curve_battery_level: Battery Level
+  export: Export
   delete: Delete
   export_success: Charging data exported
-  delete_success: Charging session deleted
+  delete_success: Charging record deleted
 
 status:
   on_battery: On Battery
@@ -53,7 +54,6 @@ status:
   to_full: to full
   to_empty: to empty
   fully_charged: Fully Charged
-  calculating: Calculating…
   battery_in: Battery In
   power_loss: Power Loss
   screen_power: Screen
@@ -105,7 +105,7 @@ settings:
 
 time:
   minute: minute|minute|minutes
-  hour: hour|hour|hours
+  hour: minute|hour|hours
 
 time_ago_options:
   day_future: in 0 days|tomorrow|in {n} days

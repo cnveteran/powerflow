@@ -10,13 +10,13 @@ const { preference, isLoading } = usePreferenceAsync()
     <Skeleton v-if="power.isLoading || isLoading" class="w-40 h-[50px] mt-2" />
     <NumberFlow
       v-else-if="preference.animationsEnabled"
-      class="metric-number text-4xl font-semibold"
+      class="text-4xl font-bold"
       :format="{ maximumFractionDigits: 1, minimumFractionDigits: 1 }"
       :value="power.isCharging ? power.systemIn : power.systemLoad"
-      suffix=" W"
+      suffix="w"
     />
-    <div v-else class="metric-number text-4xl leading-[54px] font-semibold">
-      {{ (power.isCharging ? power.systemIn : power.systemLoad).toFixed(1) }} W
+    <div v-else class="text-4xl leading-[54px] font-bold">
+      {{ (power.isCharging ? power.systemIn : power.systemLoad).toFixed(1) }}w
     </div>
   </div>
 </template>

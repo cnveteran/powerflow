@@ -7,14 +7,11 @@ const rawData = usePowerRaw()
 
 const showRemainDuration = ref(true)
 const buttonText = computed(() => {
-  if (!power.value.timeRemainKnown)
-    return null
-
   if (showRemainDuration.value) {
-    const minutes = Math.max(0, Math.round(power.value.timeRemain.secs / 60))
+    const minutes = power.value.timeRemain.secs / 60
     const hours = Math.floor(minutes / 60)
 
-    return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`
+    return `${hours}h ${minutes % 60}m`
   }
   return format(
     addSeconds(new Date(), power.value.timeRemain.secs),
@@ -39,25 +36,25 @@ const buttonText = computed(() => {
   <Skeleton v-if="power.isLoading" class="w-24 h-6" />
   <div
     v-else-if="power.isCharging"
-    class="truncate rounded-md bg-power-input/15 px-2 py-1 font-mono text-xs text-power-input"
+    class="rounded-md
+    bg-gradient-to-r from-blue-500 to-blue-600
+    px-2 py-1 text-xs truncate font-mono"
   >
-    <span class="mr-1 font-bold">{{ power.adapterWatts }}W</span>
-    <span class="text-[10px] opacity-80">({{ power.adapterVoltage }}V,{{
+    <span class="font-bold mr-1 text-background">{{ power.adapterWatts }}W</span>
+    <span class="text-[10px] text-background/80">({{ power.adapterVoltage }}V,{{
       power.adapterAmperage }}A)</span>
   </div>
-  <button
+  <div
     v-else
-    type="button"
-    class="flex min-w-20 items-center justify-center rounded-md bg-power-system/15 px-2 py-1 font-mono text-xs text-power-system transition-colors hover:bg-power-system/20"
-    :aria-pressed="!showRemainDuration"
-    :aria-label="$t('status.to_empty')"
+    class="rounded-md dark:bg-blue-600 bg-blue-600 px-2 py-1 text-xs truncate font-mono w-20 text-background flex items-center justify-center
+            cursor-pointer hover:bg-blue-600 transition-colors
+            "
     @click.stop="showRemainDuration = !showRemainDuration"
   >
-    <span class="mr-1 font-bold">{{ buttonText ?? $t('status.calculating') }}</span>
+    <span class="font-bold mr-1">{{ buttonText }}</span>
     <ArrowUpDown
-      v-if="buttonText"
-      class="size-3 opacity-70 transition-transform duration-200"
+      class="size-3 text-background/80 transition-transform duration-300"
       :class="{ 'rotate-180': showRemainDuration }"
     />
-  </button>
+  </div>
 </template>
