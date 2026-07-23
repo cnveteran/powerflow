@@ -37,6 +37,10 @@ pnpm build
 
 cnveteran
 
+## 致谢
+
+本项目基于 [The Powerflow Team](https://github.com/lzt1008/powerflow) 的 powerflow 项目二次开发，感谢原作者的开源贡献。
+
 ## 许可证
 
 [MIT](LICENSE)
