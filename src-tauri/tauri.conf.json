@@ -16,7 +16,8 @@
         "title": "Mac电源助手",
         "width": 900,
         "height": 640,
-        "titleBarStyle": "Overlay"
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       },
       {
         "label": "popover",
