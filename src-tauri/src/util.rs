@@ -18,6 +18,11 @@ pub fn position_traffic_lights(ns_window_handle: UnsafeWindowHandle, x: f64, y: 
     };
     let ns_window = ns_window_handle.0 as cocoa::base::id;
     unsafe {
+        // 强制隐藏原生标题文字，避免和 TitleBar.vue 的 tabName（设备名称）重叠。
+        // hiddenTitle: true 在 tauri.conf.json 里对 macOS 27 Overlay 模式不生效。
+        // NSWindowTitleHidden = 1
+        let _: () = msg_send![ns_window, setTitleVisibility: 1u64];
+
         let close = ns_window.standardWindowButton_(NSWindowButton::NSWindowCloseButton);
         let miniaturize =
             ns_window.standardWindowButton_(NSWindowButton::NSWindowMiniaturizeButton);
